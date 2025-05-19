@@ -3,6 +3,7 @@ body {
   font-family: Arial, sans-serif;
   background-color: #fff;
   color: #000;
+  text-align: center;
 }
 
 header {
@@ -30,19 +31,14 @@ nav a {
   color: #000;
 }
 
-nav input[type="search"] {
-  padding: 5px;
-  margin-left: 20px;
-}
-
 main {
-  max-width: 500px;
+  max-width: 400px;
   margin: 2rem auto;
   text-align: left;
 }
 
-h2 {
-  text-align: center;
+main h2 {
+  text-align: left;
 }
 
 form {
@@ -59,12 +55,6 @@ input {
   margin-top: 5px;
   border: 1px solid #ccc;
   border-radius: 4px;
-}
-
-small {
-  margin: 5px 0 15px;
-  font-size: 12px;
-  color: #555;
 }
 
 .btn-group {
@@ -96,7 +86,6 @@ footer {
   margin-top: 4rem;
   padding: 1rem;
   border-top: 1px solid #ddd;
-  text-align: center;
 }
 
 footer a {
