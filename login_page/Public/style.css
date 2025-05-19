@@ -44,7 +44,8 @@ footer {
   margin-top: 4rem;
 }
 
-/*
+
+/*Lo nuevo*/
 .password-requirements {
   font-size: 0.8rem;
   color: #666;
@@ -93,4 +94,5 @@ footer {
 
 .login-prompt {
   margin-top: 1rem;
-}*/
+  text-align: center;
+}
