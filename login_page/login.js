@@ -1,6 +1,5 @@
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-
-const auth = getAuth();
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+import { auth } from '../firebase_config.js';
 
 document.getElementById('loginForm').addEventListener('submit', function(e) {
   e.preventDefault();
@@ -11,7 +10,9 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
   signInWithEmailAndPassword(auth, email, password)
     .then((userCredential) => {
       // Redirect to main page
-      alert("Sucefully Login");
+      const user = userCredential.user;
+      console.log("Logged in:", user.email);
+      alert("Login successful!");
       window.location.href = '../main_page/main_page.html';
     })
     .catch((error) => {
