@@ -12,6 +12,8 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
 
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    window.location.href = "main_page.html";
+    alert("Login successful!");
   } catch (error) {
     alert("Error: " + error.message);
   }
