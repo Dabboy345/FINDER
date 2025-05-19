@@ -1,0 +1,95 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.nav {
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background-color: #f8f8f8;
+}
+
+.logo {
+  font-weight: bold;
+}
+
+.links a {
+  margin: 0 10px;
+  text-decoration: none;
+  color: #333;
+}
+
+.form-container {
+  max-width: 400px;
+  margin: auto;
+  padding: 2rem;
+}
+
+input {
+  width: 100%;
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+footer {
+  margin-top: 4rem;
+}
+
+.password-requirements {
+  font-size: 0.8rem;
+  color: #666;
+  margin: 0.5rem 0;
+  text-align: left;
+}
+
+.password-requirements ul {
+  margin: 0.25rem 0 0 1rem;
+  padding: 0;
+}
+
+.password-requirements li {
+  list-style-type: none;
+  position: relative;
+  padding-left: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.password-requirements li::before {
+  content: "✗";
+  position: absolute;
+  left: 0;
+  color: #ff4444;
+}
+
+.password-requirements li.valid::before {
+  content: "✓";
+  color: #00C851;
+}
+
+.validation-message {
+  font-size: 0.8rem;
+  margin: 0.25rem 0;
+  min-height: 1rem;
+  text-align: left;
+}
+
+.validation-message.error {
+  color: #ff4444;
+}
+
+.validation-message.success {
+  color: #00C851;
+}
+
+.login-prompt {
+  margin-top: 1rem;
+}

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Change CSS path to point to ../Public/style.css -->
+  <link rel="stylesheet" href="../Public/style.css" />
+  
+  <!-- Change Firebase config path -->
+  <script type="module" src="../Public/firebase_config.js"></script>
+  <!-- Keep signup.js path as is since it's in the same folder -->
+  <script type="module" src="signup.js" defer></script>
+</head>
+<body>
+  
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Finder Signup</title>
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- Firebase Configuration & Script (ESM modules) -->
+  <script type="module" src="firebase_config.js"></script>
+  <script type="module" src="signup.js" defer></script>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <div class="logo">🔍 Finder</div>
+      <div class="links">
+        <a href="#">Home</a>
+        <a href="#">About</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <h1 class="title">FINDER</h1>
+    <div class="form-container">
+      <h2>Create your Profile</h2>
+      <form id="signup-form">
+        <label for="name">Name and Surname</label>
+        <input type="text" id="name" placeholder="Write your name and surname" required />
+
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="Write your university email" required />
+
+        <label for="degree">Degree</label>
+        <input type="text" id="degree" placeholder="Write the degree you're studying" required />
+
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Write a password" required />
+        <div class="password-requirements">
+          <p>Should have at least:</p>
+          <ul>
+            <li id="uppercase">One upper case letter</li>
+            <li id="number">One number</li>
+            <li id="length">Have length >= 8 characters</li>
+          </ul>
+        </div>
+
+        <label for="confirm-password">Repeat Password</label>
+        <input type="password" id="confirm-password" placeholder="Write a password" required />
+        <div id="password-match" class="validation-message"></div>
+
+        <div class="buttons">
+          <button type="button" id="cancel-button">Cancel</button>
+          <button type="submit" id="signup-button">Save Changes</button>
+        </div>
+      </form>
+
+      <div class="login-prompt">
+        <p>Already have an account?</p>
+        <button id="login-btn">Log In</button>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <a href="#">Privacy Policy</a>
+    <a href="#">Terms of Service</a>
+    <a href="#">Help Center</a>
+  </footer>
+</body>
+</html>
