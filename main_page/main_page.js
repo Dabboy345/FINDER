@@ -1,61 +1,51 @@
-// At the top of feed.js
-import firebaseConfig from './firebase_config.js';
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/auth';
-import 'firebase/compat/firestore';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
+  authDomain: "finder-ff519.firebaseapp.com",
+  databaseURL: "https://finder-ff519-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "finder-ff519",
+  storageBucket: "finder-ff519.appspot.com",
+  messagingSenderId: "989218762868",
+  appId: "1:989218762868:web:7f5160caf34ddccd92e121"
+};
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-document.addEventListener('DOMContentLoaded', function() {
-    const postsContainer = document.querySelector('.posts-container');
-    
-    // Fetch posts from Firestore
-    db.collection('posts').orderBy('timestamp', 'desc').limit(10).get()
-        .then((querySnapshot) => {
-            postsContainer.innerHTML = ''; // Clear loading content
-            
-            querySnapshot.forEach((doc) => {
-                const post = doc.data();
-                const postElement = createPostElement(post);
-                postsContainer.appendChild(postElement);
-            });
-        })
-        .catch((error) => {
-            console.error("Error getting posts: ", error);
-            postsContainer.innerHTML = '<p class="error">Error loading posts. Please try again later.</p>';
-        });
-    
-    // ... rest of your event listeners ...
+const postsContainer = document.querySelector(".posts-container");
+
+// Fetch and render posts
+const postsRef = ref(db, "posts");
+onValue(postsRef, (snapshot) => {
+  const data = snapshot.val();
+  if (!data) {
+    postsContainer.innerHTML = "<p>No posts found.</p>";
+    return;
+  }
+
+  const posts = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
+  postsContainer.innerHTML = posts.map(post => `
+    <div class="post">
+      <h3>${escapeHtml(post.title)}</h3>
+      <img src="${post.imageUrl}" alt="${escapeHtml(post.title)}" />
+      <p>${escapeHtml(post.description)}</p>
+      <p><strong>Labels:</strong> ${post.labels?.map(escapeHtml).join(", ") || "None"}</p>
+      <p><small>By: ${escapeHtml(post.user?.email || "Unknown")}</small></p>
+      <p><small>${new Date(post.timestamp).toLocaleString()}</small></p>
+    </div>
+  `).join("");
+}, (error) => {
+  console.error("Error loading posts:", error);
+  postsContainer.innerHTML = "<p>Error loading posts.</p>";
 });
 
-function createPostElement(post) {
-    const postDiv = document.createElement('div');
-    postDiv.className = `post ${post.type.toLowerCase()}`;
-    
-    // Format the post HTML based on the data
-    postDiv.innerHTML = `
-        <div class="post-content">
-            <h3>${post.title}</h3>
-            <div class="post-meta">
-                <span class="post-type">${post.type.toUpperCase()}</span>
-                <span class="post-category">${post.category}</span>
-                <span class="post-location"><i class="fas fa-map-marker-alt"></i> ${post.location}</span>
-                <span class="post-time"><i class="far fa-clock"></i> ${formatTime(post.timestamp)}</span>
-            </div>
-        </div>
-        <div class="post-author">
-            <div class="author-avatar">${post.authorName.charAt(0)}</div>
-            <span class="author-name">${post.authorName}</span>
-        </div>
-    `;
-    
-    return postDiv;
-}
-
-function formatTime(timestamp) {
-    // Convert Firestore timestamp to readable time
-    const date = timestamp.toDate();
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/[&<>"']/g, m => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[m]);
 }
