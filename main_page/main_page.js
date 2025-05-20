@@ -1,5 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -16,36 +16,45 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const postsContainer = document.querySelector(".posts-container");
+// Redirect buttons
+document.querySelector(".lost-btn").addEventListener("click", () => {
+  window.location.href = "../post_lost/post_lost.html";
+});
 
-// Fetch and render posts
+document.querySelector(".found-btn").addEventListener("click", () => {
+  window.location.href = "../post_found/post_found.html";
+});
+
+// Load posts
 const postsRef = ref(db, "posts");
+const postsContainer = document.getElementById("postsContainer");
+
 onValue(postsRef, (snapshot) => {
-  const data = snapshot.val();
-  if (!data) {
+  postsContainer.innerHTML = ""; // Clear loading text
+
+  if (!snapshot.exists()) {
     postsContainer.innerHTML = "<p>No posts found.</p>";
     return;
   }
 
-  const posts = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
-  postsContainer.innerHTML = posts.map(post => `
-    <div class="post">
-      <h3>${escapeHtml(post.title)}</h3>
-      <img src="${post.imageUrl}" alt="${escapeHtml(post.title)}" />
-      <p>${escapeHtml(post.description)}</p>
-      <p><strong>Labels:</strong> ${post.labels?.map(escapeHtml).join(", ") || "None"}</p>
-      <p><small>By: ${escapeHtml(post.user?.email || "Unknown")}</small></p>
-      <p><small>${new Date(post.timestamp).toLocaleString()}</small></p>
-    </div>
-  `).join("");
-}, (error) => {
-  console.error("Error loading posts:", error);
-  postsContainer.innerHTML = "<p>Error loading posts.</p>";
-});
+  const posts = snapshot.val();
+  Object.values(posts).reverse().forEach((post) => {
+    const card = document.createElement("div");
+    card.className = "post-card";
 
-function escapeHtml(text) {
-  if (!text) return "";
-  return text.replace(/[&<>"']/g, m => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  })[m]);
-}
+    card.innerHTML = `
+      <img src="${post.imageUrl}" alt="Found item" />
+      <div class="content">
+        <h3>${post.title}</h3>
+        <p>${post.description}</p>
+        <div class="tags">
+          ${post.labels.map(label => `<span>${label}</span>`).join('')}
+        </div>
+        <div class="author">Posted by: ${post.user?.email || "Unknown"}</div>
+        <button class="claim-btn">Claim</button>
+      </div>
+    `;
+
+    postsContainer.appendChild(card);
+  });
+});
