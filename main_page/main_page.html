@@ -3,13 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Main Page</title>
+    <title>Finder - Your Feed</title>
+    <link rel="stylesheet" href="main_page.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="logo">Finder</div>
+            <div class="nav-links">
+                <a href="#" class="active"><i class="fas fa-home"></i> Home</a>
+                <a href="#"><i class="fas fa-user"></i> Profile</a>
+                <a href="#"><i class="fas fa-cog"></i> Settings</a>
+                <div class="search-container">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Search in site">
+                </div>
+                <a href="#" class="btn lost-btn"><i class="fas fa-question-circle"></i> I've LOST an item!</a>
+                <a href="#" class="btn found-btn"><i class="fas fa-check-circle"></i> I've FOUND an item!</a>
+            </div>
+        </nav>
 
-    <h1>Welcome to the Main Page</h1>
+        <div class="main-content">
+            <header class="feed-header">
+                <h1>Welcome to Your Feed</h1>
+                <h2>FINDER's Latest Posts</h2>
+                <p>Check out the last updates from the community</p>
+            </header>
 
-    <p>This is a basic example of a main page after a successful login.</p>
+            <div class="posts-container">
+                <!-- Post 1 -->
+                <div class="post lost">
+                    <div class="post-content">
+                        <h3>Did anyone find my laptop? Lost it in Tallers!</h3>
+                        <div class="post-meta">
+                            <span class="post-type">LOST</span>
+                            <span class="post-category">Laptop</span>
+                            <span class="post-location"><i class="fas fa-map-marker-alt"></i> Poklevous, Tallers</span>
+                            <span class="post-time"><i class="far fa-clock"></i> 19:34</span>
+                        </div>
+                    </div>
+                    <div class="post-author">
+                        <div class="author-avatar">M</div>
+                        <span class="author-name">Maria</span>
+                    </div>
+                </div>
 
+                <!-- Post 2 -->
+                <div class="post found">
+                    <div class="post-content">
+                        <h3>Found this jacket in Plaça Gutenberg!</h3>
+                        <div class="post-meta">
+                            <span class="post-type">FOUND</span>
+                            <span class="post-category">Jacket</span>
+                            <span class="post-location"><i class="fas fa-map-marker-alt"></i> Poklevous, Gutenberg</span>
+                            <span class="post-time"><i class="far fa-clock"></i> 20:30</span>
+                        </div>
+                    </div>
+                    <div class="post-author">
+                        <div class="author-avatar">P</div>
+                        <span class="author-name">Pol</span>
+                    </div>
+                </div>
+
+                <!-- Post 3 -->
+                <div class="post lost">
+                    <div class="post-content">
+                        <h3>Found my reading glasses at the library in CMaqri!</h3>
+                        <div class="post-meta">
+                            <span class="post-type">LOST</span>
+                            <span class="post-category">Reading glasses</span>
+                            <span class="post-location"><i class="fas fa-map-marker-alt"></i> CMw, Biblioteca</span>
+                            <span class="post-time"><i class="far fa-clock"></i> 12:33</span>
+                        </div>
+                    </div>
+                    <div class="post-author">
+                        <div class="author-avatar">M</div>
+                        <span class="author-name">Marc</span>
+                    </div>
+                </div>
+
+                <!-- Post 4 -->
+                <div class="post found">
+                    <div class="post-content">
+                        <h3>Found an iphone charger at room 52.105</h3>
+                        <div class="post-meta">
+                            <span class="post-type">FOUND</span>
+                            <span class="post-category">Charger</span>
+                            <span class="post-location"><i class="fas fa-map-marker-alt"></i> Poklevous, 52.105</span>
+                            <span class="post-time"><i class="far fa-clock"></i> 18:30</span>
+                        </div>
+                    </div>
+                    <div class="post-author">
+                        <div class="author-avatar">B</div>
+                        <span class="author-name">Berta</span>
+                    </div>
+                </div>
+
+                <!-- Post 5 -->
+                <div class="post lost">
+                    <div class="post-content">
+                        <h3>Looking for my umbrella, last seen at the cafeteria</h3>
+                        <div class="post-meta">
+                            <span class="post-type">LOST</span>
+                            <span class="post-category">Umbrella</span>
+                            <span class="post-location"><i class="fas fa-map-marker-alt"></i> Poklevous, Cafeteria</span>
+                            <span class="post-time"><i class="far fa-clock"></i> 12:14</span>
+                        </div>
+                    </div>
+                    <div class="post-author">
+                        <div class="author-avatar">M</div>
+                        <span class="author-name">Maria</span>
+                    </div>
+                </div>
+
+                <!-- Post 6 -->
+                <div class="post found">
+                    <div class="post-content">
+                        <h3>Found a water bottle at campus mar this morning</h3>
+                        <div class="post-meta">
+                            <span class="post-type">FOUND</span>
+                            <span class="post-category">Water bottle</span>
+                            <span class="post-location"><i class="fas fa-map-marker-alt"></i> CMw, 61.023</span>
+                            <span class="post-time"><i class="far fa-clock"></i> 10:02</span>
+                        </div>
+                    </div>
+                    <div class="post-author">
+                        <div class="author-avatar">J</div>
+                        <span class="author-name">Joan</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Help Center</a>
+        </footer>
+    </div>
+
+    <script src="feed.js"></script>
 </body>
 </html>
