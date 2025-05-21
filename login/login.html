@@ -2,18 +2,48 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Finder - Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login</title>
+  <link rel="stylesheet" href="login.css" />
 </head>
 <body>
-  <h2>Login to Finder</h2>
-  <form id="loginForm">
-    <label>Email: <input type="email" id="email" name="email" required /></label><br /><br />
-    <label>Password: <input type="password" id="password" name="password" required /></label><br /><br />
-    <button type="submit">Login</button>
-  </form>
-  <button onclick="forgotPassword()">Forgot Password?</button>
+  <header>
+    <div class="nav-container">
+      <div class="logo">Finder</div>
+      <nav>
+        <a href="#">Home</a>
+        <a href="#">About</a>
+        <a href="#">Contact</a>
+      </nav>
+    </div>
+  </header>
 
-  <script type="module" src="login.js"></script>
+  <main>
+    <h2>Log in</h2>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="Enter your email" required />
+
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Enter your password" required />
+
+      <div class="btn-group">
+        <button type="button" onclick="forgotPassword()">Forgot Password?</button>
+        <button type="submit">Log In</button>
+      </div>
+    </form>
+
+    <p>Don’t have an account?</p>
+    <button onclick="window.location.href='../signup/signup.html'">Sign In</button>
+  </main>
+
+  <footer>
+    <a href="#">Privacy Policy</a>
+    <a href="#">Terms of Service</a>
+    <a href="#">Support</a>
+  </footer>
+
+<script type="module" src="../firebase_config.js"></script>
+<script type="module" src="login.js"></script>
 </body>
 </html>

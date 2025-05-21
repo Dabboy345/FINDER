@@ -13,6 +13,13 @@ document.getElementById("signupForm").addEventListener("submit", (e) => {
     return;
   }
 
+  // Password validation
+  const passwordValidationMessage = validatePassword(password);
+  if (passwordValidationMessage) {
+    alert(passwordValidationMessage);
+    return;
+  }
+
   createUserWithEmailAndPassword(auth, email, password)
     .then((userCredential) => {
       const user = userCredential.user;
@@ -25,3 +32,20 @@ document.getElementById("signupForm").addEventListener("submit", (e) => {
       alert("Signup failed: " + error.message);
     });
 });
+
+function validatePassword(password) {
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const isLongEnough = password.length >= 8;
+
+  if (!hasUpperCase) {
+    return "Password must contain at least one uppercase letter.";
+  }
+  if (!hasNumber) {
+    return "Password must contain at least one number.";
+  }
+  if (!isLongEnough) {
+    return "Password must be at least 8 characters long.";
+  }
+  return null; // Password is valid
+}
