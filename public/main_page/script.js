@@ -1,7 +1,21 @@
 // Import Firebase modular SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { 
+  getAuth, 
+  onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+import { 
+  getDatabase, 
+  ref, 
+  push, 
+  set 
+} from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { 
+  getStorage, 
+  ref as storageRef, 
+  uploadBytes, 
+  getDownloadURL 
+} from "https://www.gstatic.com/firebasejs/10.11.0/firebase-storage.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -16,18 +30,33 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
 const auth = getAuth(app);
-
-const imgbbApiKey = "7f5b86f1efb5c249bafe472c9078a76d";
+const db = getDatabase(app);
+const storage = getStorage(app);
 
 const postForm = document.getElementById("postForm");
+
+// Validate file type and size
+function validateFile(file) {
+  const validTypes = ["image/jpeg", "image/png", "image/gif"];
+  const maxSize = 5 * 1024 * 1024; // 5MB
+
+  if (!validTypes.includes(file.type)) {
+    throw new Error("Invalid file type. Please upload a JPEG, PNG, or GIF image.");
+  }
+
+  if (file.size > maxSize) {
+    throw new Error("File too large. Maximum size is 5MB.");
+  }
+
+  return true;
+}
 
 // Ensure user is logged in before allowing post creation
 onAuthStateChanged(auth, (user) => {
   if (!user) {
     alert("Please log in to create a post.");
-    window.location.href = "../login/login.html";  // Adjust as necessary
+    window.location.href = "../login/login.html";
   }
 });
 
@@ -46,6 +75,7 @@ postForm.addEventListener("submit", async (e) => {
   const fileInput = postForm.imageFile;
   const labelsRaw = postForm.labels.value.trim();
 
+  // Basic validation
   if (!title) {
     alert("Title is required.");
     return;
@@ -56,25 +86,45 @@ postForm.addEventListener("submit", async (e) => {
     return;
   }
 
-  const labels = labelsRaw ? labelsRaw.split(",").map(label => label.trim()).filter(Boolean) : [];
-
+  const file = fileInput.files[0];
+  
   try {
-    // Convert image file to base64
-    const imageBase64 = await toBase64(fileInput.files[0]);
+    // Validate file
+    validateFile(file);
+    
+    // Show loading state
+    const submitBtn = postForm.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Uploading...";
 
-    // Upload to imgbb and get URL
-    const imageUrl = await uploadToImgbb(imageBase64);
+    // Create storage reference with organized path
+    const filePath = `posts/${user.uid}/${Date.now()}_${file.name}`;
+    const fileReference = storageRef(storage, filePath);
+
+    // Upload file to Firebase Storage
+    const uploadResult = await uploadBytes(fileReference, file);
+    
+    // Get public download URL
+    const imageUrl = await getDownloadURL(uploadResult.ref);
+
+    // Process labels
+    const labels = labelsRaw ? 
+      labelsRaw.split(",").map(label => label.trim()).filter(Boolean) : 
+      [];
 
     // Prepare post object
     const postData = {
       title,
       description: description || null,
       imageUrl,
+      storagePath: filePath, // Store path for potential future deletion
       labels,
       timestamp: Date.now(),
       user: {
         uid: user.uid,
-        email: user.email
+        email: user.email,
+        displayName: user.displayName || null
       }
     };
 
@@ -82,41 +132,40 @@ postForm.addEventListener("submit", async (e) => {
     const newPostRef = push(ref(db, "posts"));
     await set(newPostRef, postData);
 
+    // Success handling
     alert("Post submitted successfully!");
     postForm.reset();
-
+    
   } catch (error) {
     console.error("Error submitting post:", error);
-    alert("Failed to submit post. Please try again.");
+    alert(`Error: ${error.message}`);
+  } finally {
+    // Reset button state
+    const submitBtn = postForm.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalBtnText;
+    }
   }
 });
 
-// Helper: Convert file to Base64 string
-function toBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result.split(",")[1]); // Remove "data:image/xxx;base64," prefix
-    reader.onerror = error => reject(error);
-  });
-}
-
-// Helper: Upload image to imgbb and return image URL
-async function uploadToImgbb(base64Image) {
-  const formData = new FormData();
-  formData.append("key", imgbbApiKey);
-  formData.append("image", base64Image);
-
-  const response = await fetch("https://api.imgbb.com/1/upload", {
-    method: "POST",
-    body: formData
-  });
-
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error(data.error?.message || "Image upload failed");
-  }
-
-  return data.data.url;
+// Helper function to display upload progress (optional)
+function setupUploadProgress(fileInput) {
+  const progressBar = document.createElement("div");
+  progressBar.style.width = "100%";
+  progressBar.style.height = "5px";
+  progressBar.style.backgroundColor = "#eee";
+  progressBar.style.marginTop = "10px";
+  
+  const progressFill = document.createElement("div");
+  progressFill.style.height = "100%";
+  progressFill.style.backgroundColor = "#4CAF50";
+  progressFill.style.width = "0%";
+  progressBar.appendChild(progressFill);
+  
+  fileInput.parentNode.insertBefore(progressBar, fileInput.nextSibling);
+  
+  return (percentage) => {
+    progressFill.style.width = `${percentage}%`;
+  };
 }
