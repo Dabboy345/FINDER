@@ -3,6 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/fireba
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getDatabase, ref, set, update, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-storage.js";
 
 
 const firebaseConfig = {
@@ -20,6 +21,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const database = getDatabase(app);
+const storage = getStorage(app);
 
 
-export { app, auth, db, database };
+
+export { app, auth, db, database,storage};

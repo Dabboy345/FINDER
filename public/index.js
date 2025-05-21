@@ -13,7 +13,7 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
       const user = userCredential.user;
       console.log("Logged in:", user.email);
       alert("Login successful!");
-      window.location.href = '../main_page/main_page.html';
+      window.location.href = './main_page/main_page.html';
     })
     .catch((error) => {
       alert("Login failed: " + error.message);
