@@ -1,5 +1,5 @@
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { auth } from '../firebase_config.js';
+import { auth } from './firebase_config.js';
 
 document.getElementById('loginForm').addEventListener('submit', function(e) {
   e.preventDefault();
