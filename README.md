@@ -38,7 +38,7 @@ This is our Project for the course Software engineering(course 2025). We are Gro
 
 ## Features
 
-Feautrue Avaliable at the moment. 
+Features Available at the moment. 
 
 * Log In: The user is able to do the log in the app and able to acess to the main feed.
 * Sign In: The user is able to create a account to be able to log in.
