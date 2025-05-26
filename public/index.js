@@ -1,38 +1,63 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { auth } from './firebase_config.js';
 
-document.getElementById('loginForm').addEventListener('submit', function(e) {
+const firebaseConfig = {
+  apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
+  authDomain: "finder-ff519.firebaseapp.com",
+  databaseURL: "https://finder-ff519-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "finder-ff519",
+  storageBucket: "finder-ff519.appspot.com",
+  messagingSenderId: "989218762868",
+  appId: "1:989218762868:web:7f5160caf34ddccd92e121"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+// Check if user is already logged in
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    window.location.href = 'main_page/main_page.html';
+  }
+});
+
+// Handle login form submission
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-
+  
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
 
-  signInWithEmailAndPassword(auth, email, password)
-    .then((userCredential) => {
-      // Redirect to main page
-      const user = userCredential.user;
-      console.log("Logged in:", user.email);
-      alert("Login successful!");
-      window.location.href = './main_page/main_page.html';
-    })
-    .catch((error) => {
-      alert("Login failed: " + error.message);
-    });
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    console.log("Logged in:", userCredential.user.email);
+    window.location.href = './main_page/main_page.html';
+  } catch (error) {
+    console.error("Login error:", error);
+    alert(error.message);
+  }
 });
 
-function forgotPassword() {
+// Handle forgot password
+document.getElementById('forgotPasswordBtn').addEventListener('click', async () => {
   const email = document.getElementById('email').value.trim();
-
+  
   if (!email) {
-    alert("Please enter your email to reset password.");
+    alert("Please enter your email address to reset your password.");
     return;
   }
 
-  sendPasswordResetEmail(auth, email)
-    .then(() => {
-      alert("Password reset email sent!");
-    })
-    .catch((error) => {
-      alert("Error: " + error.message);
-    });
-}
+  try {
+    await sendPasswordResetEmail(auth, email);
+    alert("Password reset email sent! Please check your inbox.");
+  } catch (error) {
+    console.error("Password reset error:", error);
+    alert(error.message);
+  }
+});
+
+// Handle sign up button
+document.getElementById('signInBtn').addEventListener('click', () => {
+  window.location.href = './signup/signup.html';
+});

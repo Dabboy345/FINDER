@@ -3,44 +3,51 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Finder - Your Feed</title>
+  <title>Finder - Main Page</title>
   <link rel="stylesheet" href="main_page.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 <body>
-  <div class="container">
-    <nav class="navbar">
-      <div class="logo">Finder</div>
-      <div class="nav-links">
-        <a href="#" class="active"><i class="fas fa-home"></i> Home</a>
-        <a href="#"><i class="fas fa-user"></i> Profile</a>
-        <a href="#"><i class="fas fa-cog"></i> Settings</a>
-        <div class="search-container">
-          <i class="fas fa-search"></i>
-          <input type="text" placeholder="Search in site" />
-        </div>
-        <a href="post-creation.html" class="btn lost-btn"><i class="fas fa-question-circle"></i> I've LOST an item!</a>
-        <a href="post-creation.html" class="btn found-btn"><i class="fas fa-check-circle"></i> I've FOUND an item!</a>
+  <nav class="navbar">
+    <div class="logo">Finder</div>
+    <div class="nav-links">
+      <a href="#" class="active" id="homeBtn"><i class="fas fa-home"></i> Home</a>
+      <a href="../profile/profile.html" id="profileBtn"><i class="fas fa-user"></i> Profile</a>
+      <div class="notification-container">
+        <i class="fas fa-bell"></i>
+        <span id="notificationBadge">0</span>
       </div>
-    </nav>
+      <a href="post-creation.html" class="btn create-btn"><i class="fas fa-plus-circle"></i> Create Post</a>
+      <a href="#" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
 
-    <div class="main-content">
-      <header class="feed-header">
-        <h1>Welcome to Your Feed</h1>
-        <h2>FINDER's Latest Posts</h2>
-        <p>Check out the last updates from the community</p>
-      </header>
-
-      <div class="posts-container">
-        <p>Loading posts...</p>
-      </div>
+  <div class="main-content">
+    <div class="feed-header">
+      <h1>Welcome to Finder</h1>
+      <h2>Lost something? Found something?</h2>
+      <p>Connect with your community to find lost items or help others find theirs.</p>
     </div>
 
-    <footer class="footer">
-      <a href="#">Privacy Policy</a>
-      <a href="#">Terms of Service</a>
-      <a href="#">Help Center</a>
-    </footer>
+    <div class="posts-container">
+      <!-- Posts will be loaded here dynamically -->
+    </div>
+  </div>
+
+  <!-- Claim Modal -->
+  <div id="claimModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close" id="closeClaimModal">&times;</span>
+      <h2>Send a Message to the Finder</h2>
+      <div class="contact-section">
+        <p>Send a message to <span id="finderEmail"></span> about this item:</p>
+        <textarea id="claimMessage" placeholder="Write your message here..." rows="4"></textarea>
+        <div class="modal-buttons">
+          <button id="cancelClaimBtn">Cancel</button>
+          <button id="sendClaimBtn">Send Message</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="main_page.js"></script>

@@ -1,3 +1,17 @@
+/* General styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f5f6fa;
+    color: #2c3e50;
+    min-height: 100vh;
+}
+
 /* Main Feed Page Styles */
 .navbar {
     display: flex;
@@ -6,33 +20,32 @@
     padding: 1rem 2rem;
     background-color: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #3498db;
 }
 
 .nav-links {
     display: flex;
+    gap: 2rem;
     align-items: center;
-    gap: 1.5rem;
 }
 
 .nav-links a {
     text-decoration: none;
     color: #7f8c8d;
-    transition: color 0.3s;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    transition: color 0.3s;
 }
 
+.nav-links a:hover,
 .nav-links a.active {
     color: #3498db;
-    font-weight: 500;
-}
-
-.nav-links a:hover {
-    color: #2c3e50;
 }
 
 .search-container {
@@ -64,6 +77,18 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.create-btn {
+    background-color: #3498db;
+    color: white !important;
+}
+
+.create-btn:hover {
+    background-color: #2980b9;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .lost-btn {
@@ -112,34 +137,88 @@
 
 .post {
     background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     padding: 1.5rem;
+    margin-bottom: 2rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
     display: flex;
-    justify-content: space-between;
-    transition: transform 0.3s;
+    flex-direction: column;
+    gap: 1rem;
 }
 
 .post:hover {
-    transform: translateY(-2px);
-}
-
-.post-content {
-    flex: 1;
+    transform: translateY(-4px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
 
 .post h3 {
-    font-size: 1.1rem;
+    font-size: 1.4rem;
     color: #2c3e50;
-    margin-bottom: 0.8rem;
+    margin: 0;
+    font-weight: 600;
 }
 
-.post-meta {
+.post img {
+    width: 100%;
+    height: 300px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+}
+
+.post p {
+    color: #34495e;
+    line-height: 1.6;
+    margin: 0.5rem 0;
+}
+
+.post .labels {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    align-items: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+}
+
+.post .label {
+    background-color: #e8f4fd;
+    color: #3498db;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
     font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.post .post-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.post .author {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.post .author i {
+    color: #3498db;
+}
+
+.post .timestamp {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.post .timestamp i {
+    color: #95a5a6;
 }
 
 .post-type {
@@ -219,23 +298,298 @@
     color: #2c3e50;
 }
 
-.post {
-  border: 1px solid #ccc;
-  padding: 1em;
-  border-radius: 6px;
-  margin-bottom: 1.5em;
-  background: #f9f9f9;
+.post .claim-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    transition: background-color 0.2s ease;
 }
 
-.post img {
-  max-width: 100%;
-  max-height: 300px;
-  object-fit: cover;
-  border-radius: 6px;
-  margin: 0.5em 0;
+.post .claim-btn:hover {
+    background-color: #2980b9;
 }
 
-.post h3 {
-  margin-top: 0;
-  color: #222;
+.post .claim-btn i {
+    font-size: 1.1rem;
+}
+
+.post .claim-status {
+    margin-top: 1rem;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.post .claim-status.claimed {
+    background-color: #e8f8f0;
+    color: #27ae60;
+}
+
+.post.claimed {
+    border: 2px solid #27ae60;
+}
+
+.post.claimed .claim-status i {
+    color: #27ae60;
+}
+
+.modal {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999;
+}
+
+.modal-content {
+    background: #fff; padding: 2rem; border-radius: 10px; width: 500px; max-width: 90vw; position: relative;
+}
+
+.close {
+    position: absolute; top: 1rem; right: 1rem; font-size: 2rem; cursor: pointer;
+}
+
+.contact-section { display: flex; flex-direction: column; gap: 1.5rem; }
+
+#claimMessage { width: 100%; padding: 0.5rem; margin: 1rem 0; }
+
+.modal-buttons { display: flex; gap: 1rem; }
+
+#cancelClaimBtn { background: #fff; border: 1px solid #111; color: #111; padding: 0.5rem 1.5rem; border-radius: 5px; cursor: pointer; }
+
+#sendClaimBtn { background: #111; color: #fff; border: none; padding: 0.5rem 1.5rem; border-radius: 5px; cursor: pointer; }
+
+.notification-container {
+    position: relative;
+    cursor: pointer;
+}
+
+.notification-container i {
+    font-size: 1.2rem;
+    color: #7f8c8d;
+    transition: color 0.3s;
+}
+
+.notification-container:hover i {
+    color: #3498db;
+}
+
+#notificationBadge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: #e74c3c;
+    color: white;
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    display: none;
+}
+
+/* Scrollbar styles for notification dropdown */
+.notification-dropdown::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notification-dropdown::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.notification-dropdown::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+}
+
+.notification-dropdown::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.post-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.post-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.edit-btn, .delete-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s ease;
+}
+
+.edit-btn {
+    background-color: #3498db;
+    color: white;
+}
+
+.edit-btn:hover {
+    background-color: #2980b9;
+}
+
+.delete-btn {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.delete-btn:hover {
+    background-color: #c0392b;
+}
+
+/* Edit Modal Styles */
+#editPostForm {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+#editPostForm label {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+#editPostForm input,
+#editPostForm textarea {
+    width: 100%;
+    padding: 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+#editPostForm textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.modal-buttons button {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.modal-buttons button[type="button"] {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.modal-buttons button[type="button"]:hover {
+    background-color: #7f8c8d;
+}
+
+.modal-buttons button[type="submit"] {
+    background-color: #2ecc71;
+    color: white;
+}
+
+.modal-buttons button[type="submit"]:hover {
+    background-color: #27ae60;
+}
+
+/* Last edited timestamp */
+.last-edited {
+    font-size: 0.8rem;
+    color: #95a5a6;
+    font-style: italic;
+    margin-top: 0.5rem;
+}
+
+/* Post ownership styles */
+.post.own-post {
+    border-left: 4px solid #3498db;
+    background-color: #f8fafc;
+}
+
+.owner-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background-color: #3498db;
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+.owner-badge i {
+    color: #ffd700;
+    font-size: 0.9rem;
+}
+
+.owner-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.8rem;
+    background-color: #f1f9ff;
+    border-radius: 8px;
+    color: #3498db;
+    font-size: 0.9rem;
+}
+
+.owner-message i {
+    color: #3498db;
+}
+
+/* Update post meta styles to accommodate owner badge */
+.post .post-meta .author {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.post .post-meta .author i {
+    color: #3498db;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .main-content {
+        padding: 1rem;
+    }
+
+    .nav-links {
+        gap: 1rem;
+    }
+
+    .modal-content {
+        margin: 1rem;
+        padding: 1.5rem;
+    }
 }

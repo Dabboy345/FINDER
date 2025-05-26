@@ -43,7 +43,9 @@ Features Available at the moment.
 * Log In: The user is able to do the log in the app and able to acess to the main feed.
 * Sign In: The user is able to create a account to be able to log in.
 * Main Feed: The user is able to look what the other user have posted.
-* Post Creation: The user is able to create a post for a found/lost item. 
+* Post Creation: The user is able to create a post for a found/lost item.
+* **In-app Notifications:** Users receive real-time notifications for claims and when they are tagged in posts. Notifications are displayed in-app with a badge and dropdown.
+* **Notification Details Modal:** Clicking a notification opens a modal with detailed information, including post details and images if relevant.
 
 ---
 
@@ -56,7 +58,7 @@ These are the technologies that we have used for our project.
     * `CSS`
     * `JavaScript`
 * **Backend:**
-    * 
+    * `Firebase`
 * **Database:**
     * `Firebase`
 * **Other Tools:**
@@ -94,6 +96,23 @@ https://shorturl.at/3FoLa
 * **Post Creation:** The interface for the Post Creation.  
   ![Post Creation](readme_img/postcreation.png)
 
+---
+
+## Notifications
+
+**How notifications work:**
+- Users receive real-time notifications when:
+  - Someone claims their post (claim notification)
+  - They are tagged in a post description using `@their.email@domain.com` (tag notification)
+- Notifications appear as a bell icon with a badge in the navigation bar.
+- Clicking the bell shows a dropdown with all notifications (unread notifications are highlighted).
+- Clicking a notification opens a modal with more details, including:
+  - Notification title, message, and time
+  - Related post's title, image, description, and labels (if applicable)
+
+**Tagging users:**
+- To tag a user in a post, include `@their.email@domain.com` in the post description.
+- The tagged user will receive a real-time notification if they have posted before.
 
 ---
 

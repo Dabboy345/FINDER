@@ -8,14 +8,9 @@ import {
   getDatabase, 
   ref, 
   push, 
-  set 
+  set, 
+  get 
 } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
-import { 
-  getStorage, 
-  ref as storageRef, 
-  uploadBytes, 
-  getDownloadURL 
-} from "https://www.gstatic.com/firebasejs/10.11.0/firebase-storage.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -32,7 +27,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
-const storage = getStorage(app);
 
 const postForm = document.getElementById("postForm");
 
@@ -52,6 +46,16 @@ function validateFile(file) {
   return true;
 }
 
+// Convert file to base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+}
+
 // Ensure user is logged in before allowing post creation
 onAuthStateChanged(auth, (user) => {
   if (!user) {
@@ -59,6 +63,32 @@ onAuthStateChanged(auth, (user) => {
     window.location.href = "../login/login.html";
   }
 });
+
+// Helper: Detect @email tags in text
+function detectTaggedEmails(text) {
+  const tagPattern = /@([\w.-]+@[\w.-]+\.[A-Za-z]{2,6})/g;
+  const tags = [];
+  let match;
+  while ((match = tagPattern.exec(text)) !== null) {
+    tags.push(match[1]);
+  }
+  return tags;
+}
+
+// Helper: Find userId by email by scanning all posts (fallback)
+async function getUserIdByEmail(email) {
+  const postsRef = ref(db, 'posts');
+  const snapshot = await get(postsRef);
+  const data = snapshot.val();
+  if (!data) return null;
+  for (const postId in data) {
+    const post = data[postId];
+    if (post.user && post.user.email === email) {
+      return post.user.uid;
+    }
+  }
+  return null;
+}
 
 postForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -98,15 +128,8 @@ postForm.addEventListener("submit", async (e) => {
     submitBtn.disabled = true;
     submitBtn.textContent = "Uploading...";
 
-    // Create storage reference with organized path
-    const filePath = `posts/${user.uid}/${Date.now()}_${file.name}`;
-    const fileReference = storageRef(storage, filePath);
-
-    // Upload file to Firebase Storage
-    const uploadResult = await uploadBytes(fileReference, file);
-    
-    // Get public download URL
-    const imageUrl = await getDownloadURL(uploadResult.ref);
+    // Convert image to base64
+    const base64Image = await fileToBase64(file);
 
     // Process labels
     const labels = labelsRaw ? 
@@ -117,8 +140,7 @@ postForm.addEventListener("submit", async (e) => {
     const postData = {
       title,
       description: description || null,
-      imageUrl,
-      storagePath: filePath, // Store path for potential future deletion
+      imageData: base64Image,
       labels,
       timestamp: Date.now(),
       user: {
@@ -131,6 +153,26 @@ postForm.addEventListener("submit", async (e) => {
     // Push post to Firebase Realtime Database
     const newPostRef = push(ref(db, "posts"));
     await set(newPostRef, postData);
+
+    // Tag detection and notification
+    const taggedEmails = detectTaggedEmails(description);
+    for (const email of taggedEmails) {
+      const taggedUserId = await getUserIdByEmail(email);
+      if (taggedUserId && taggedUserId !== user.uid) {
+        // Send notification to tagged user
+        const notificationsRef = ref(db, 'notifications');
+        const newNotification = {
+          to: taggedUserId,
+          title: 'You were tagged in a post!',
+          message: `${user.email} tagged you in a post: "${title}"`,
+          type: 'tag',
+          postId: newPostRef.key,
+          timestamp: Date.now(),
+          read: false
+        };
+        await push(notificationsRef, newNotification);
+      }
+    }
 
     // Success handling
     alert("Post submitted successfully!");

@@ -2,53 +2,81 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Finder | Found Item</title>
-  <link rel="stylesheet" href="style.css"/>
-  <!-- Remove firebase compat and use only modular -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Finder - Create Post</title>
+  <link rel="stylesheet" href="post-creation.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 <body>
-  <header>
-    <div class="logo">🔍 FINDER</div>
-    <nav>
-      <a href="#">Home</a>
-      <a href="#">Profile</a>
-      <a href="#">Settings</a>
-      <input type="text" placeholder="Search in site"/>
-    </nav>
-  </header>
+  <nav class="navbar">
+    <div class="logo">Finder</div>
+    <div class="nav-links">
+      <a href="main_page.html"><i class="fas fa-home"></i> Home</a>
+      <a href="../profile/profile.html"><i class="fas fa-user"></i> Profile</a>
+      <div class="notification-container">
+        <i class="fas fa-bell"></i>
+        <span id="notificationBadge">0</span>
+      </div>
+      <a href="#" class="btn create-btn active"><i class="fas fa-plus-circle"></i> Create Post</a>
+      <a href="#" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+  </nav>
 
-  <main>
-    <h1>Lost/Found an Item?</h1>
-    <section class="form-section">
-      <h2>Post Details</h2>
+  <div class="main-content">
+    <div class="post-creation-container">
+      <h1>Create a New Post</h1>
+      <p class="subtitle">Share details about your lost or found item</p>
+
       <form id="postForm">
-        <label for="title">Post Title</label>
-        <input type="text" id="title" placeholder="Describe briefly the lost/found item ..." required />
+        <div class="form-group">
+          <label for="postType">Post Type</label>
+          <div class="post-type-buttons">
+            <button type="button" class="type-btn lost-btn active" data-type="lost">
+              <i class="fas fa-question-circle"></i> Lost Item
+            </button>
+            <button type="button" class="type-btn found-btn" data-type="found">
+              <i class="fas fa-check-circle"></i> Found Item
+            </button>
+          </div>
+        </div>
 
-        <label for="description">Description</label>
-        <input type="text" id="description" placeholder="Provide any additional information ..." />
+        <div class="form-group">
+          <label for="title">Title</label>
+          <input type="text" id="title" required placeholder="What did you lose/find?" />
+        </div>
 
-        <label for="imageFile">Select Image File</label>
-        <input type="file" id="imageFile" accept="image/png, image/jpeg" required />
+        <div class="form-group">
+          <label for="description">Description</label>
+          <textarea id="description" rows="4" required placeholder="Provide details about the item..."></textarea>
+        </div>
 
-        <label for="labels">Labels (comma separated)</label>
-        <input type="text" id="labels" placeholder="e.g. item, place, time" />
+        <div class="form-group">
+          <label for="labels">Labels (comma-separated)</label>
+          <input type="text" id="labels" placeholder="e.g., electronics, blue, small" />
+        </div>
 
-        <div class="form-buttons">
-          <button type="button" onclick="window.history.back()">Back</button>
-          <button type="submit">Submit Post</button>
+        <div class="form-group">
+          <label for="image">Image</label>
+          <div class="image-upload">
+            <input type="file" id="image" accept="image/*" />
+            <div class="image-preview">
+              <img id="imagePreview" src="#" alt="Preview" style="display: none;" />
+              <div class="upload-placeholder">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Click to upload an image</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="cancel-btn" onclick="window.location.href='main_page.html'">Cancel</button>
+          <button type="submit" class="submit-btn">Create Post</button>
         </div>
       </form>
-    </section>
-  </main>
+    </div>
+  </div>
 
-  <footer>
-    <a href="#">Privacy Policy</a>
-    <a href="#">Terms of Service</a>
-    <a href="#">Help Center</a>
-  </footer>
-
-  <script type="module" src="script.js"></script>
+  <script type="module" src="post-creation.js"></script>
 </body>
 </html>
