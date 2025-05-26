@@ -63,7 +63,6 @@ async function handleClaim(postId, post) {
 }
 
 const postsMap = {};
-// Fetch and render posts
 const postsRef = ref(db, "posts");
 onValue(postsRef, async (snapshot) => {
   const data = snapshot.val();
@@ -103,16 +102,18 @@ onValue(postsRef, async (snapshot) => {
     }
   }
 
+  // Render posts
   postsContainer.innerHTML = posts.map(([postId, post]) => `
-    <div class="post ${post.claimed ? 'claimed' : ''} ${currentUser && post.user && currentUser.uid === post.user.uid ? 'own-post' : ''}">
+    <div class="post ${post.claimed ? 'claimed' : ''} ${currentUser && post.user && currentUser.uid === post.user.uid ? 'own-post' : ''}" 
+         data-post-id="${postId}" style="cursor:pointer;">
       <div class="post-header">
         <h3>${escapeHtml(post.title)}</h3>
         ${currentUser && post.user && currentUser.uid === post.user.uid ? `
           <div class="post-actions">
-            <button class="edit-btn" onclick="handleEditPost('${postId}')">
+            <button class="edit-btn" onclick="event.stopPropagation();handleEditPost('${postId}')">
               <i class="fas fa-edit"></i> Edit
             </button>
-            <button class="delete-btn" onclick="handleDeletePost('${postId}')">
+            <button class="delete-btn" onclick="event.stopPropagation();handleDeletePost('${postId}')">
               <i class="fas fa-trash"></i> Delete
             </button>
           </div>
@@ -153,7 +154,7 @@ onValue(postsRef, async (snapshot) => {
           <i class="fas fa-check-circle"></i>
           <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
           ${currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid) ? `
-            <button class="chat-btn" onclick="openChat('${postId}', '${
+            <button class="chat-btn" onclick="event.stopPropagation();openChat('${postId}', '${
               currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid
             }', '${
               currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email
@@ -172,19 +173,27 @@ onValue(postsRef, async (snapshot) => {
         <div class="claim-status pending">
           <i class="fas fa-clock"></i>
           <span>You have already claimed this item</span>
-          <button class="chat-btn" onclick="openChat('${postId}', '${post.user.uid}', '${post.user.email}')">
+          <button class="chat-btn" onclick="event.stopPropagation();openChat('${postId}', '${post.user.uid}', '${post.user.email}')">
             <i class="fas fa-comments"></i>
             Chat
           </button>
         </div>
       ` : `
-        <button class="claim-btn" onclick="openClaimModal('${postId}')">
+        <button class="claim-btn" onclick="event.stopPropagation();openClaimModal('${postId}')">
           <i class="fas fa-hand-holding"></i>
           Claim Item
         </button>
       `}
     </div>
   `).join("");
+
+  // Add click event to all posts for redirection
+  document.querySelectorAll('.post[data-post-id]').forEach(postDiv => {
+    postDiv.addEventListener('click', function() {
+      const postId = this.getAttribute('data-post-id');
+      window.location.href = `post-details.html?id=${encodeURIComponent(postId)}`;
+    });
+  });
 }, (error) => {
   console.error("Error loading posts:", error);
   postsContainer.innerHTML = "<p>Error loading posts.</p>";
@@ -427,20 +436,7 @@ async function loadNotifications() {
     `;
   }).join('');
 
-  // Mark notifications as read when clicked
-  notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
-    item.addEventListener('click', async () => {
-      const notificationId = item.dataset.id;
-      const notificationRef = ref(db, `notifications/${notificationId}`);
-      await update(notificationRef, { read: true });
-      item.classList.remove('unread');
-      unreadNotifications--;
-      updateNotificationBadge(unreadNotifications);
-      // Show details modal
-      const notification = Object.assign({},{...data[notificationId], id: notificationId});
-      await showNotificationDetail(notification);
-    });
-  });
+  setupNotificationClickHandler();
 }
 
 // Initialize notifications when user is logged in
@@ -977,13 +973,106 @@ document.getElementById('findMatchesBtn').addEventListener('click', async () => 
         break;
       }
     }
-    if (foundMatch) break;
+    if (foundMatch && matchInfo) {
+      showMatchModal(matchInfo.myPost, matchInfo.otherPost, matchInfo.shared);
+      alert("Match found! Check notifications for details.");
+      break;
+    }
+  }
+  if (!foundMatch) {
+    alert("No matches found based on labels.");
+  }
+});
+
+// Update notification click handler to redirect to post-details for match notifications
+function setupNotificationClickHandler() {
+  notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const notificationId = item.dataset.id;
+      const notificationRef = ref(db, `notifications/${notificationId}`);
+      await update(notificationRef, { read: true });
+      item.classList.remove('unread');
+      unreadNotifications--;
+      updateNotificationBadge(unreadNotifications);
+
+      // Fetch notification data
+      const snapshot = await get(notificationRef);
+      const notification = snapshot.val();
+      if (!notification) return;
+
+      // Redirect for match notifications
+      if (notification.type === 'match' && notification.postId && notification.matchedWithId) {
+        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}&matchedWith=${encodeURIComponent(notification.matchedWithId)}`;
+      } else if (notification.postId) {
+        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}`;
+      } else {
+        await showNotificationDetail({ ...notification, id: notificationId });
+      }
+    });
+  });
+}
+
+// Call this after loading notifications
+async function loadNotifications() {
+  if (!currentUser) return;
+
+  const notificationsRef = ref(db, 'notifications');
+  const snapshot = await get(notificationsRef);
+  const data = snapshot.val();
+  
+  if (!data) {
+    notificationDropdown.innerHTML = '<div class="notification-item">No notifications</div>';
+    return;
   }
 
-  if (foundMatch && matchInfo) {
-    showMatchModal(matchInfo.myPost, matchInfo.otherPost, matchInfo.shared);
-    alert("Match found! Check notifications for details.");
-  } else {
-    alert("No matches found based on labels.");
+  const notifications = Object.entries(data)
+    .filter(([, n]) => n.to === currentUser.uid)
+    .sort(([, a], [, b]) => b.lastUpdated - a.lastUpdated);
+
+  notificationDropdown.innerHTML = notifications.map(([id, notification]) => {
+    const timeString = formatDate(notification.lastUpdated);
+    const claimCount = notification.claimCount || 1;
+    
+    return `
+      <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
+        <div class="notification-title">
+          <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
+          ${escapeHtml(notification.title)}
+        </div>
+        <div class="notification-message">
+          ${claimCount > 1 ? 
+            `${claimCount} people want to claim your item` :
+            escapeHtml(notification.message)
+          }
+        </div>
+        <div class="notification-time">${timeString}</div>
+      </div>
+    `;
+  }).join('');
+
+  setupNotificationClickHandler();
+}
+
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('notification-item')) {
+    const notificationId = e.target.dataset.id;
+    const notificationRef = ref(db, `notifications/${notificationId}`);
+    await update(notificationRef, { read: true });
+    e.target.classList.remove('unread');
+    unreadNotifications--;
+    updateNotificationBadge(unreadNotifications);
+
+    // Redirect or show details based on notification type
+    const notificationSnapshot = await get(notificationRef);
+    if (notificationSnapshot.exists()) {
+      const notification = notificationSnapshot.val();
+      if (notification.type === 'match' && notification.postId && notification.matchedWithId) {
+        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}&matchedWith=${encodeURIComponent(notification.matchedWithId)}`;
+      } else if (notification.postId) {
+        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}`;
+      } else {
+        await showNotificationDetail({ ...notification, id: notificationId });
+      }
+    }
   }
 });
