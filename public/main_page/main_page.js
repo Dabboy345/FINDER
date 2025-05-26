@@ -176,18 +176,51 @@ document.getElementById('cancelClaimBtn').onclick = function() {
 let unreadNotifications = 0;
 
 // Function to create a notification
-async function createNotification(toUserId, title, message, type, postId) {
+async function createNotification(toUserId, title, message, type, postId, additionalData = {}) {
   const notificationsRef = ref(db, 'notifications');
-  const newNotification = {
-    to: toUserId,
-    title,
-    message,
-    type,
-    postId,
-    timestamp: Date.now(),
-    read: false
+  
+  // Check for existing notifications for this post
+  const existingNotificationsSnapshot = await get(notificationsRef);
+  const existingNotifications = existingNotificationsSnapshot.val() || {};
+  
+  // Find if there's an existing notification for this post
+  const existingNotificationId = Object.entries(existingNotifications)
+    .find(([, n]) => n.postId === postId && n.to === toUserId && !n.read)?.[0];
+
+  const newClaim = {
+    from: additionalData.from,
+    message: additionalData.claimMessage,
+    timestamp: Date.now()
   };
-  await push(notificationsRef, newNotification);
+
+  if (existingNotificationId) {
+    // Update existing notification
+    const updatedNotification = {
+      ...existingNotifications[existingNotificationId],
+      lastUpdated: Date.now(),
+      claimCount: (existingNotifications[existingNotificationId].claimCount || 1) + 1,
+      claims: [
+        ...(existingNotifications[existingNotificationId].claims || []),
+        newClaim
+      ]
+    };
+    await update(ref(db, `notifications/${existingNotificationId}`), updatedNotification);
+  } else {
+    // Create new notification
+    const newNotification = {
+      to: toUserId,
+      title,
+      message,
+      type,
+      postId,
+      timestamp: Date.now(),
+      lastUpdated: Date.now(),
+      read: false,
+      claimCount: 1,
+      claims: [newClaim]
+    };
+    await push(notificationsRef, newNotification);
+  }
 }
 
 // Function to update notification badge
@@ -241,18 +274,24 @@ document.getElementById('sendClaimBtn').onclick = async function() {
     };
     await push(claimsRef, newClaim);
 
-    // Create notification for the post creator
+    // Create notification for the post creator with additional data
     await createNotification(
       currentClaimPost.user.uid,
       'New Claim Request',
       `${currentUser.email} wants to claim your item: ${currentClaimPost.title}`,
       'claim',
-      currentClaimPostId
+      currentClaimPostId,
+      {
+        from: { uid: currentUser.uid, email: currentUser.email },
+        claimMessage: message
+      }
     );
 
     document.getElementById('claimModal').style.display = 'none';
+    alert('Claim request sent successfully!');
   } catch (error) {
     console.error('Error sending message:', error);
+    alert('Error sending message. Please try again.');
   }
 };
 
@@ -292,15 +331,28 @@ async function loadNotifications() {
 
   const notifications = Object.entries(data)
     .filter(([, n]) => n.to === currentUser.uid)
-    .sort(([, a], [, b]) => b.timestamp - a.timestamp);
+    .sort(([, a], [, b]) => b.lastUpdated - a.lastUpdated);
 
-  notificationDropdown.innerHTML = notifications.map(([id, notification]) => `
-    <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
-      <div class="notification-title">${escapeHtml(notification.title)}</div>
-      <div class="notification-message">${escapeHtml(notification.message)}</div>
-      <div class="notification-time">${new Date(notification.timestamp).toLocaleString()}</div>
-    </div>
-  `).join('');
+  notificationDropdown.innerHTML = notifications.map(([id, notification]) => {
+    const timeString = formatDate(notification.lastUpdated);
+    const claimCount = notification.claimCount || 1;
+    
+    return `
+      <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
+        <div class="notification-title">
+          <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
+          ${escapeHtml(notification.title)}
+        </div>
+        <div class="notification-message">
+          ${claimCount > 1 ? 
+            `${claimCount} people want to claim your item` :
+            escapeHtml(notification.message)
+          }
+        </div>
+        <div class="notification-time">${timeString}</div>
+      </div>
+    `;
+  }).join('');
 
   // Mark notifications as read when clicked
   notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
@@ -326,14 +378,19 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// Add notification detail modal to the DOM
+// Update notification detail modal to the DOM
 const notificationDetailModal = document.createElement('div');
 notificationDetailModal.id = 'notificationDetailModal';
 notificationDetailModal.className = 'modal';
 notificationDetailModal.style.display = 'none';
 notificationDetailModal.innerHTML = `
   <div class="modal-content" id="notificationDetailContent">
-    <span class="close" id="closeNotificationDetail">&times;</span>
+    <div class="modal-header">
+      <span class="close" id="closeNotificationDetail">&times;</span>
+      <button class="delete-notification-btn" id="deleteNotificationBtn">
+        <i class="fas fa-trash"></i> Delete
+      </button>
+    </div>
     <div id="notificationDetailBody"></div>
   </div>
 `;
@@ -343,36 +400,116 @@ document.getElementById('closeNotificationDetail').onclick = function() {
   notificationDetailModal.style.display = 'none';
 };
 
-// Helper to fetch post details by postId
-async function getPostById(postId) {
-  const postRef = ref(db, `posts/${postId}`);
-  const snapshot = await get(postRef);
-  return snapshot.exists() ? snapshot.val() : null;
-}
+// Add delete notification functionality
+document.getElementById('deleteNotificationBtn').onclick = async function() {
+  const notificationId = this.dataset.notificationId;
+  if (!notificationId) return;
+
+  if (confirm('Are you sure you want to delete this notification?')) {
+    try {
+      const notificationRef = ref(db, `notifications/${notificationId}`);
+      await set(notificationRef, null);
+      notificationDetailModal.style.display = 'none';
+      loadNotifications(); // Refresh notifications list
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      alert('Error deleting notification. Please try again.');
+    }
+  }
+};
 
 // Update notification click handler to show details
 async function showNotificationDetail(notification) {
-  let html = `<div class="notification-title">${escapeHtml(notification.title)}</div>
-    <div class="notification-message">${escapeHtml(notification.message)}</div>
-    <div class="notification-time">${new Date(notification.timestamp).toLocaleString()}</div>`;
+  // Set the notification ID for the delete button
+  document.getElementById('deleteNotificationBtn').dataset.notificationId = notification.id;
+
+  let html = `
+    <div class="notification-header">
+      <div class="notification-title">
+        <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
+        ${escapeHtml(notification.title)}
+      </div>
+      <div class="notification-time">
+        Created: ${formatDate(notification.timestamp)}<br>
+        Last updated: ${formatDate(notification.lastUpdated)}
+      </div>
+    </div>
+  `;
+
+  if (notification.claims && notification.claims.length > 0) {
+    html += `
+      <div class="claims-list">
+        <h3>Claim Messages (${notification.claims.length})</h3>
+        ${notification.claims.map(claim => `
+          <div class="claim-item">
+            <div class="claim-header">
+              <strong>${escapeHtml(claim.from.email)}</strong>
+              <span>${formatDate(claim.timestamp)}</span>
+            </div>
+            <div class="claim-message">${formatMessage(claim.message)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
 
   if (notification.postId) {
     const post = await getPostById(notification.postId);
     if (post) {
-      html += `<hr><div><strong>Post:</strong> ${escapeHtml(post.title)}</div>`;
-      if (post.imageData) {
-        html += `<img src="${post.imageData}" alt="${escapeHtml(post.title)}" style="max-width:100%;margin:10px 0;" onerror="this.onerror=null;this.src='default-image.png';" />`;
-      }
-      if (post.description) {
-        html += `<div><strong>Description:</strong> ${escapeHtml(post.description)}</div>`;
-      }
-      if (post.labels && post.labels.length) {
-        html += `<div><strong>Labels:</strong> ${post.labels.map(l => `<span class='label'>${escapeHtml(l)}</span>`).join(' ')}</div>`;
-      }
+      html += `
+        <div class="post-details">
+          <h3>Post Details</h3>
+          <div class="post-title">${escapeHtml(post.title)}</div>
+          ${post.imageData ? 
+            `<img src="${post.imageData}" alt="${escapeHtml(post.title)}" 
+                  style="max-width:100%;margin:10px 0;" 
+                  onerror="this.onerror=null;this.src='default-image.png';" />` : 
+            ''
+          }
+          ${post.description ? 
+            `<div class="post-description">${formatMessage(post.description)}</div>` : 
+            ''
+          }
+          ${post.labels && post.labels.length ? 
+            `<div class="post-labels">
+              ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
+            </div>` : 
+            ''
+          }
+        </div>
+      `;
     }
   }
+
   document.getElementById('notificationDetailBody').innerHTML = html;
   notificationDetailModal.style.display = 'flex';
+}
+
+// Helper function to format dates consistently
+function formatDate(timestamp) {
+  if (!timestamp) return 'Unknown date';
+  const date = new Date(timestamp);
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+// Helper function to format messages with line breaks
+function formatMessage(message) {
+  if (!message) return '';
+  return escapeHtml(message).replace(/\n/g, '<br>');
+}
+
+// Helper function to fetch post details by postId
+async function getPostById(postId) {
+  const postRef = ref(db, `posts/${postId}`);
+  const snapshot = await get(postRef);
+  return snapshot.exists() ? snapshot.val() : null;
 }
 
 // Add edit and delete post handlers
