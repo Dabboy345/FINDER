@@ -50,6 +50,29 @@
     </div>
   </div>
 
+  <!-- Chat Modal -->
+  <div id="chatModal" class="modal" style="display: none;">
+    <div class="modal-content chat-modal">
+      <div class="chat-header">
+        <div class="chat-info">
+          <h2>Chat</h2>
+          <p>Chatting with <span id="chatWithUser"></span></p>
+          <p class="chat-item-title">Item: <span id="chatItemTitle"></span></p>
+        </div>
+        <span class="close" id="closeChatModal">&times;</span>
+      </div>
+      <div class="chat-messages" id="chatMessages">
+        <!-- Messages will be loaded here -->
+      </div>
+      <div class="chat-input-container">
+        <textarea id="chatMessageInput" placeholder="Type your message..." rows="2"></textarea>
+        <button id="sendChatMessage">
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="main_page.js"></script>
 </body>
 </html>

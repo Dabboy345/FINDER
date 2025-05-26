@@ -65,7 +65,7 @@ async function handleClaim(postId, post) {
 const postsMap = {};
 // Fetch and render posts
 const postsRef = ref(db, "posts");
-onValue(postsRef, (snapshot) => {
+onValue(postsRef, async (snapshot) => {
   const data = snapshot.val();
   if (!data) {
     postsContainer.innerHTML = "<p>No posts found.</p>";
@@ -77,6 +77,23 @@ onValue(postsRef, (snapshot) => {
   for (const [postId, post] of posts) {
     postsMap[postId] = post;
   }
+
+  // Get all claims for the current user
+  let userClaims = {};
+  if (currentUser) {
+    const claimsRef = ref(db, 'claims');
+    const claimsSnapshot = await get(claimsRef);
+    const claims = claimsSnapshot.val();
+    if (claims) {
+      userClaims = Object.values(claims).reduce((acc, claim) => {
+        if (claim.from.uid === currentUser.uid) {
+          acc[claim.postId] = true;
+        }
+        return acc;
+      }, {});
+    }
+  }
+
   postsContainer.innerHTML = posts.map(([postId, post]) => `
     <div class="post ${post.claimed ? 'claimed' : ''} ${currentUser && post.user && currentUser.uid === post.user.uid ? 'own-post' : ''}">
       <div class="post-header">
@@ -126,11 +143,30 @@ onValue(postsRef, (snapshot) => {
         <div class="claim-status claimed">
           <i class="fas fa-check-circle"></i>
           <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
+          ${currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid) ? `
+            <button class="chat-btn" onclick="openChat('${postId}', '${
+              currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid
+            }', '${
+              currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email
+            }')">
+              <i class="fas fa-comments"></i>
+              Chat
+            </button>
+          ` : ''}
         </div>
       ` : currentUser && post.user && currentUser.uid === post.user.uid ? `
         <div class="owner-message">
           <i class="fas fa-info-circle"></i>
           <span>This is your post - waiting for someone to claim it</span>
+        </div>
+      ` : userClaims[postId] ? `
+        <div class="claim-status pending">
+          <i class="fas fa-clock"></i>
+          <span>You have already claimed this item</span>
+          <button class="chat-btn" onclick="openChat('${postId}', '${post.user.uid}', '${post.user.email}')">
+            <i class="fas fa-comments"></i>
+            Chat
+          </button>
         </div>
       ` : `
         <button class="claim-btn" onclick="openClaimModal('${postId}')">
@@ -159,9 +195,37 @@ window.handleClaim = handleClaim;
 let currentClaimPostId = null;
 let currentClaimPost = null;
 
-window.openClaimModal = function(postId) {
+// Function to check if user has already claimed a post
+async function hasUserClaimedPost(postId, userId) {
+  const claimsRef = ref(db, 'claims');
+  const claimsSnapshot = await get(claimsRef);
+  const claims = claimsSnapshot.val();
+  
+  if (!claims) return false;
+  
+  return Object.values(claims).some(claim => 
+    claim.postId === postId && 
+    claim.from.uid === userId
+  );
+}
+
+// Update window.openClaimModal function
+window.openClaimModal = async function(postId) {
+  if (!currentUser) {
+    alert("Please log in to claim an item.");
+    return;
+  }
+
   currentClaimPostId = postId;
   currentClaimPost = postsMap[postId];
+
+  // Check if user has already claimed this post
+  const hasAlreadyClaimed = await hasUserClaimedPost(postId, currentUser.uid);
+  if (hasAlreadyClaimed) {
+    alert("You have already submitted a claim for this item.");
+    return;
+  }
+
   document.getElementById('finderEmail').textContent = currentClaimPost.user?.email || 'User';
   document.getElementById('claimMessage').value = '';
   document.getElementById('claimModal').style.display = 'flex';
@@ -629,3 +693,141 @@ onAuthStateChanged(auth, (user) => {
     currentUser = user;
   }
 });
+
+// Chat functionality
+let currentChatId = null;
+let currentChatPartner = null;
+let currentChatPost = null;
+
+// Function to generate a unique chat ID
+function generateChatId(user1Id, user2Id, postId) {
+  const sortedIds = [user1Id, user2Id].sort();
+  return `${sortedIds[0]}_${sortedIds[1]}_${postId}`;
+}
+
+// Function to open chat
+async function openChat(postId, otherUserId, otherUserEmail) {
+  if (!currentUser) {
+    alert("Please log in to use the chat.");
+    return;
+  }
+
+  const post = postsMap[postId];
+  if (!post) return;
+
+  currentChatId = generateChatId(currentUser.uid, otherUserId, postId);
+  currentChatPartner = { uid: otherUserId, email: otherUserEmail };
+  currentChatPost = post;
+
+  // Update chat modal info
+  document.getElementById('chatWithUser').textContent = otherUserEmail;
+  document.getElementById('chatItemTitle').textContent = post.title;
+  document.getElementById('chatMessageInput').value = '';
+  
+  // Show chat modal
+  document.getElementById('chatModal').style.display = 'flex';
+  
+  // Load and listen to messages
+  await loadMessages();
+  listenToNewMessages();
+}
+
+// Function to load messages
+async function loadMessages() {
+  if (!currentChatId) return;
+
+  const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+  const snapshot = await get(messagesRef);
+  const messages = snapshot.val() || {};
+  
+  displayMessages(Object.entries(messages));
+}
+
+// Function to listen to new messages
+function listenToNewMessages() {
+  if (!currentChatId) return;
+
+  const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+  onValue(messagesRef, (snapshot) => {
+    const messages = snapshot.val() || {};
+    displayMessages(Object.entries(messages));
+  });
+}
+
+// Function to display messages
+function displayMessages(messages) {
+  const chatMessages = document.getElementById('chatMessages');
+  
+  chatMessages.innerHTML = messages
+    .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+    .map(([, message]) => `
+      <div class="message ${message.senderId === currentUser.uid ? 'sent' : 'received'}">
+        <div class="message-content">${formatMessage(message.text)}</div>
+        <div class="timestamp">${formatDate(message.timestamp)}</div>
+      </div>
+    `).join('');
+  
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Function to send message
+async function sendMessage(text) {
+  if (!currentChatId || !text.trim()) return;
+
+  const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+  const newMessage = {
+    text: text.trim(),
+    senderId: currentUser.uid,
+    senderEmail: currentUser.email,
+    timestamp: Date.now()
+  };
+  
+  await push(messagesRef, newMessage);
+
+  // Send notification to chat partner
+  await createNotification(
+    currentChatPartner.uid,
+    'New Message',
+    `${currentUser.email} sent you a message about: ${currentChatPost.title}`,
+    'chat',
+    currentChatPost.id,
+    {
+      chatId: currentChatId,
+      message: text.trim()
+    }
+  );
+}
+
+// Chat modal event listeners
+document.getElementById('closeChatModal').onclick = function() {
+  document.getElementById('chatModal').style.display = 'none';
+  currentChatId = null;
+  currentChatPartner = null;
+  currentChatPost = null;
+};
+
+document.getElementById('sendChatMessage').onclick = async function() {
+  const input = document.getElementById('chatMessageInput');
+  const message = input.value.trim();
+  
+  if (message) {
+    await sendMessage(message);
+    input.value = '';
+  }
+};
+
+document.getElementById('chatMessageInput').addEventListener('keypress', async function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const message = this.value.trim();
+    
+    if (message) {
+      await sendMessage(message);
+      this.value = '';
+    }
+  }
+});
+
+// Make chat function available globally
+window.openChat = openChat;
