@@ -132,9 +132,32 @@ postForm.addEventListener("submit", async (e) => {
     const base64Image = await fileToBase64(file);
 
     // Process labels
-    const labels = labelsRaw ? 
+    let labels = labelsRaw ? 
       labelsRaw.split(",").map(label => label.trim()).filter(Boolean) : 
       [];
+
+    // Automatically add "lost" or "found" label based on user selection
+    // (Assumes you have a radio/select input named "postType" with value "lost" or "found")
+    const postTypeInput = postForm.postType; // e.g. <input type="radio" name="postType" value="lost">
+    let postType = "";
+    if (postTypeInput) {
+      if (postTypeInput.value) {
+        postType = postTypeInput.value.toLowerCase();
+      } else if (postTypeInput.length) {
+        // If radio group
+        for (let i = 0; i < postTypeInput.length; i++) {
+          if (postTypeInput[i].checked) {
+            postType = postTypeInput[i].value.toLowerCase();
+            break;
+          }
+        }
+      }
+    }
+    if (postType === "lost" || postType === "found") {
+      if (!labels.map(l => l.toLowerCase()).includes(postType)) {
+        labels.unshift(postType); // Add at the beginning
+      }
+    }
 
     // Prepare post object
     const postData = {
@@ -173,6 +196,61 @@ postForm.addEventListener("submit", async (e) => {
         await push(notificationsRef, newNotification);
       }
     }
+
+    // --- MATCHING FUNCTIONALITY START ---
+    // Determine if this is a "lost" or "found" post
+    const isLost = labels.map(l => l.toLowerCase()).includes("lost");
+    const isFound = labels.map(l => l.toLowerCase()).includes("found");
+    if (isLost || isFound) {
+      // Get all posts from DB
+      const postsSnapshot = await get(ref(db, "posts"));
+      const postsData = postsSnapshot.val();
+      if (postsData) {
+        for (const [otherPostId, otherPost] of Object.entries(postsData)) {
+          if (otherPostId === newPostRef.key) continue; // skip self
+          if (!otherPost.labels) continue;
+          const otherLabels = otherPost.labels.map(l => l.toLowerCase());
+          const otherIsLost = otherLabels.includes("lost");
+          const otherIsFound = otherLabels.includes("found");
+          // Only match lost <-> found
+          if ((isLost && otherIsFound) || (isFound && otherIsLost)) {
+            // Find shared labels (excluding "lost"/"found")
+            const shared = labels
+              .map(l => l.toLowerCase())
+              .filter(l => l !== "lost" && l !== "found" && otherLabels.includes(l));
+            if (shared.length > 0) {
+              // Notify both users
+              const notificationsRef = ref(db, 'notifications');
+              // Notify current user
+              await push(notificationsRef, {
+                to: user.uid,
+                title: 'Potential Match Found!',
+                message: `We found a matching "${otherIsLost ? "lost" : "found"}" post: "${otherPost.title}" with labels: ${shared.join(", ")}`,
+                type: 'match',
+                postId: otherPostId,
+                timestamp: Date.now(),
+                read: false
+              });
+              // Notify other user
+              if (otherPost.user && otherPost.user.uid) {
+                await push(notificationsRef, {
+                  to: otherPost.user.uid,
+                  title: 'Potential Match Found!',
+                  message: `We found a matching "${isLost ? "lost" : "found"}" post: "${title}" with labels: ${shared.join(", ")}`,
+                  type: 'match',
+                  postId: newPostRef.key,
+                  timestamp: Date.now(),
+                  read: false
+                });
+              }
+              // Only notify for the first match found
+              break;
+            }
+          }
+        }
+      }
+    }
+    // --- MATCHING FUNCTIONALITY END ---
 
     // Success handling
     alert("Post submitted successfully!");

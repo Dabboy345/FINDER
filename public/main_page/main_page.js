@@ -72,8 +72,13 @@ onValue(postsRef, async (snapshot) => {
     return;
   }
 
-  const posts = Object.entries(data).sort(([, a], [, b]) => b.timestamp - a.timestamp);
+  // Convert data to array of [postId, post] pairs
+  const posts = Object.entries(data)
+    .filter(([postId, post]) => post && typeof post === "object")
+    .sort(([, a], [, b]) => (b.timestamp || 0) - (a.timestamp || 0));
+
   // Store posts in postsMap
+  Object.keys(postsMap).forEach(key => delete postsMap[key]);
   for (const [postId, post] of posts) {
     postsMap[postId] = post;
   }
@@ -81,16 +86,20 @@ onValue(postsRef, async (snapshot) => {
   // Get all claims for the current user
   let userClaims = {};
   if (currentUser) {
-    const claimsRef = ref(db, 'claims');
-    const claimsSnapshot = await get(claimsRef);
-    const claims = claimsSnapshot.val();
-    if (claims) {
-      userClaims = Object.values(claims).reduce((acc, claim) => {
-        if (claim.from.uid === currentUser.uid) {
-          acc[claim.postId] = true;
-        }
-        return acc;
-      }, {});
+    try {
+      const claimsRef = ref(db, 'claims');
+      const claimsSnapshot = await get(claimsRef);
+      const claims = claimsSnapshot.val();
+      if (claims) {
+        userClaims = Object.values(claims).reduce((acc, claim) => {
+          if (claim.from && claim.from.uid === currentUser.uid) {
+            acc[claim.postId] = true;
+          }
+          return acc;
+        }, {});
+      }
+    } catch (e) {
+      userClaims = {};
     }
   }
 
@@ -130,7 +139,7 @@ onValue(postsRef, async (snapshot) => {
         </div>
         <div class="timestamp">
           <i class="fas fa-clock"></i>
-          <span>${new Date(post.timestamp).toLocaleString()}</span>
+          <span>${post.timestamp ? new Date(post.timestamp).toLocaleString() : "Unknown"}</span>
           ${post.lastEdited ? `
             <div class="last-edited">
               <i class="fas fa-edit"></i>
@@ -519,7 +528,57 @@ async function showNotificationDetail(notification) {
 
   if (notification.postId) {
     const post = await getPostById(notification.postId);
-    if (post) {
+    let matchedWithPost = null;
+    if (notification.matchedWithId) {
+      matchedWithPost = await getPostById(notification.matchedWithId);
+    }
+    if (post && matchedWithPost) {
+      html += `
+        <div class="post-details" style="display:flex;gap:1.5rem;flex-wrap:wrap;justify-content:center;">
+          <div style="flex:1;min-width:180px;max-width:260px;">
+            <h3>Your Post</h3>
+            <div class="post-title">${escapeHtml(matchedWithPost.title)}</div>
+            ${matchedWithPost.imageData ? 
+              `<img src="${matchedWithPost.imageData}" alt="${escapeHtml(matchedWithPost.title)}" 
+                    style="max-width:100%;margin:10px 0;" 
+                    onerror="this.onerror=null;this.src='default-image.png';" />` : 
+              ''
+            }
+            ${matchedWithPost.description ? 
+              `<div class="post-description">${formatMessage(matchedWithPost.description)}</div>` : 
+              ''
+            }
+            ${matchedWithPost.labels && matchedWithPost.labels.length ? 
+              `<div class="post-labels">
+                ${matchedWithPost.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
+              </div>` : 
+              ''
+            }
+          </div>
+          <div style="flex:1;min-width:180px;max-width:260px;">
+            <h3>Matched Post</h3>
+            <div class="post-title">${escapeHtml(post.title)}</div>
+            ${post.imageData ? 
+              `<img src="${post.imageData}" alt="${escapeHtml(post.title)}" 
+                    style="max-width:100%;margin:10px 0;" 
+                    onerror="this.onerror=null;this.src='default-image.png';" />` : 
+              ''
+            }
+            ${post.description ? 
+              `<div class="post-description">${formatMessage(post.description)}</div>` : 
+              ''
+            }
+            ${post.labels && post.labels.length ? 
+              `<div class="post-labels">
+                ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
+              </div>` : 
+              ''
+            }
+          </div>
+        </div>
+      `;
+    } else if (post) {
+      // fallback: show only matched post
       html += `
         <div class="post-details">
           <h3>Post Details</h3>
@@ -831,3 +890,100 @@ document.getElementById('chatMessageInput').addEventListener('keypress', async f
 
 // Make chat function available globally
 window.openChat = openChat;
+
+document.getElementById('findMatchesBtn').addEventListener('click', async () => {
+  if (!currentUser) {
+    alert("Please log in to use the matching feature.");
+    return;
+  }
+
+  const postsSnapshot = await get(ref(db, 'posts'));
+  const postsData = postsSnapshot.val();
+  if (!postsData) {
+    alert("No posts available for matching.");
+    return;
+  }
+
+  // Fetch all notifications to avoid duplicate match notifications
+  const notificationsSnapshot = await get(ref(db, 'notifications'));
+  const notificationsData = notificationsSnapshot.val() || {};
+
+  // Helper to check if a match notification already exists for a user and post
+  function hasMatchNotification(userId, postId) {
+    return Object.values(notificationsData).some(
+      n => n.to === userId && n.type === 'match' && n.postId === postId
+    );
+  }
+
+  // Separate user's posts and others'
+  const myPosts = [];
+  const otherPosts = [];
+  for (const [id, post] of Object.entries(postsData)) {
+    if (post.user && post.user.uid === currentUser.uid) {
+      myPosts.push({ id, ...post });
+    } else {
+      otherPosts.push({ id, ...post });
+    }
+  }
+
+  // Try to find matches for each of the user's posts
+  let foundMatch = false;
+  let matchInfo = null;
+  for (const myPost of myPosts) {
+    const myType = myPost.type?.toLowerCase();
+    if (myType !== "lost" && myType !== "found") continue;
+    const myLabels = (myPost.labels || []).map(l => l.toLowerCase());
+
+    for (const otherPost of otherPosts) {
+      const otherType = otherPost.type?.toLowerCase();
+      if (!otherType || myType === otherType) continue;
+      const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
+
+      // Find shared labels (excluding "lost"/"found")
+      const shared = myLabels.filter(
+        l => l !== "lost" && l !== "found" && otherLabels.includes(l)
+      );
+      if (shared.length > 0) {
+        foundMatch = true;
+        matchInfo = { myPost, otherPost, shared, myType, otherType };
+        const notificationsRef = ref(db, 'notifications');
+        // Notify current user if not already notified
+        if (!hasMatchNotification(currentUser.uid, otherPost.id)) {
+          await push(notificationsRef, {
+            to: currentUser.uid,
+            title: 'Potential Match Found!',
+            message: `We found a matching "${otherType}" post: "${otherPost.title}" with labels: ${shared.join(", ")}`,
+            type: 'match',
+            postId: otherPost.id,
+            matchedWithId: myPost.id,
+            timestamp: Date.now(),
+            read: false
+          });
+        }
+        // Notify other user if not already notified
+        if (otherPost.user && otherPost.user.uid && !hasMatchNotification(otherPost.user.uid, myPost.id)) {
+          await push(notificationsRef, {
+            to: otherPost.user.uid,
+            title: 'Potential Match Found!',
+            message: `We found a matching "${myType}" post: "${myPost.title}" with labels: ${shared.join(", ")}`,
+            type: 'match',
+            postId: myPost.id,
+            matchedWithId: otherPost.id,
+            timestamp: Date.now(),
+            read: false
+          });
+        }
+        // Only notify for the first match per post
+        break;
+      }
+    }
+    if (foundMatch) break;
+  }
+
+  if (foundMatch && matchInfo) {
+    showMatchModal(matchInfo.myPost, matchInfo.otherPost, matchInfo.shared);
+    alert("Match found! Check notifications for details.");
+  } else {
+    alert("No matches found based on labels.");
+  }
+});

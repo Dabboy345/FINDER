@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { getDatabase, ref, push, get, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
@@ -64,10 +64,15 @@ postForm.addEventListener('submit', async (e) => {
 
   const title = document.getElementById('title').value;
   const description = document.getElementById('description').value;
-  const labels = document.getElementById('labels').value
+  let labels = document.getElementById('labels').value
     .split(',')
     .map(label => label.trim())
     .filter(Boolean);
+
+  // Ensure the selected post type ("lost" or "found") is included as a label
+  if (!labels.map(l => l.toLowerCase()).includes(postType)) {
+    labels.unshift(postType);
+  }
 
   // Get base64 image data
   const imageData = imagePreview.style.display !== 'none' ? imagePreview.src : null;
@@ -88,8 +93,57 @@ postForm.addEventListener('submit', async (e) => {
       claimed: false
     };
 
-    // Save to Firebase
-    await push(ref(db, 'posts'), post);
+    // Save to Firebase and get the new post reference
+    const newPostRef = await push(ref(db, 'posts'), post);
+
+    // --- AUTOMATIC MATCHING FUNCTIONALITY ---
+    // Try to find a matching post of the opposite type
+    const postsSnapshot = await get(ref(db, 'posts'));
+    const postsData = postsSnapshot.val();
+    if (postsData) {
+      for (const [otherPostId, otherPost] of Object.entries(postsData)) {
+        if (otherPostId === newPostRef.key) continue; // skip self
+        if (!otherPost.labels) continue;
+        const otherLabels = otherPost.labels.map(l => l.toLowerCase());
+        const otherType = otherPost.type?.toLowerCase();
+        // Only match lost <-> found
+        if ((postType === "lost" && otherType === "found") || (postType === "found" && otherType === "lost")) {
+          // Find shared labels (excluding "lost"/"found")
+          const shared = labels
+            .map(l => l.toLowerCase())
+            .filter(l => l !== "lost" && l !== "found" && otherLabels.includes(l));
+          if (shared.length > 0) {
+            // Notify both users (store a notification in the database)
+            const notificationsRef = ref(db, 'notifications');
+            // Notify current user
+            await push(notificationsRef, {
+              to: currentUser.uid,
+              title: 'Potential Match Found!',
+              message: `We found a matching "${otherType}" post: "${otherPost.title}" with labels: ${shared.join(", ")}`,
+              type: 'match',
+              postId: otherPostId,
+              timestamp: Date.now(),
+              read: false
+            });
+            // Notify other user
+            if (otherPost.user && otherPost.user.uid) {
+              await push(notificationsRef, {
+                to: otherPost.user.uid,
+                title: 'Potential Match Found!',
+                message: `We found a matching "${postType}" post: "${title}" with labels: ${shared.join(", ")}`,
+                type: 'match',
+                postId: newPostRef.key,
+                timestamp: Date.now(),
+                read: false
+              });
+            }
+            // Only notify for the first match found
+            break;
+          }
+        }
+      }
+    }
+    // --- END MATCHING FUNCTIONALITY ---
 
     // Redirect to main page
     window.location.href = 'main_page.html';
@@ -109,4 +163,4 @@ document.getElementById('logoutBtn').addEventListener('click', async (e) => {
     console.error('Error signing out:', error);
     alert('Error signing out. Please try again.');
   }
-}); 
+});
