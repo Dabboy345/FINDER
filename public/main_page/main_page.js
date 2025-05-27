@@ -1013,45 +1013,6 @@ function setupNotificationClickHandler() {
 }
 
 // Call this after loading notifications
-async function loadNotifications() {
-  if (!currentUser) return;
-
-  const notificationsRef = ref(db, 'notifications');
-  const snapshot = await get(notificationsRef);
-  const data = snapshot.val();
-  
-  if (!data) {
-    notificationDropdown.innerHTML = '<div class="notification-item">No notifications</div>';
-    return;
-  }
-
-  const notifications = Object.entries(data)
-    .filter(([, n]) => n.to === currentUser.uid)
-    .sort(([, a], [, b]) => b.lastUpdated - a.lastUpdated);
-
-  notificationDropdown.innerHTML = notifications.map(([id, notification]) => {
-    const timeString = formatDate(notification.lastUpdated);
-    const claimCount = notification.claimCount || 1;
-    
-    return `
-      <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
-        <div class="notification-title">
-          <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
-          ${escapeHtml(notification.title)}
-        </div>
-        <div class="notification-message">
-          ${claimCount > 1 ? 
-            `${claimCount} people want to claim your item` :
-            escapeHtml(notification.message)
-          }
-        </div>
-        <div class="notification-time">${timeString}</div>
-      </div>
-    `;
-  }).join('');
-
-  setupNotificationClickHandler();
-}
 
 document.addEventListener('click', async (e) => {
   if (e.target.classList.contains('notification-item')) {
