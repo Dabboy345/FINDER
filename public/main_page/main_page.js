@@ -1182,28 +1182,469 @@ async function enhancedFindMatches() {
   checkForMatchSuggestions(myPosts, postsData);
 }
 
-// Call this after loading notifications
+// AI-Powered Recommendation System
+class AIRecommendationEngine {
+  constructor() {
+    this.weightings = {
+      exactMatch: 10,
+      semanticSimilarity: 8,
+      visualSimilarity: 6,
+      locationProximity: 4,
+      temporalRelevance: 3,
+      userBehavior: 2
+    };
+    
+    // Common synonyms and related terms for better matching
+    this.semanticGroups = {
+      electronics: ['phone', 'mobile', 'smartphone', 'iphone', 'android', 'tablet', 'laptop', 'computer', 'headphones', 'earbuds', 'charger', 'cable'],
+      accessories: ['watch', 'ring', 'necklace', 'bracelet', 'earrings', 'jewelry', 'glasses', 'sunglasses'],
+      clothing: ['shirt', 'jacket', 'coat', 'pants', 'jeans', 'dress', 'skirt', 'shoes', 'sneakers', 'boots', 'hat', 'cap'],
+      bags: ['backpack', 'purse', 'wallet', 'bag', 'briefcase', 'handbag', 'suitcase', 'luggage'],
+      keys: ['keys', 'keychain', 'car keys', 'house keys', 'remote'],
+      documents: ['id', 'passport', 'license', 'card', 'document', 'paper', 'certificate'],
+      pets: ['dog', 'cat', 'pet', 'animal', 'puppy', 'kitten'],
+      sports: ['ball', 'basketball', 'football', 'soccer', 'tennis', 'golf', 'equipment']
+    };
+  }
 
-document.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('notification-item')) {
-    const notificationId = e.target.dataset.id;
-    const notificationRef = ref(db, `notifications/${notificationId}`);
-    await update(notificationRef, { read: true });
-    e.target.classList.remove('unread');
-    unreadNotifications--;
-    updateNotificationBadge(unreadNotifications);
-
-    // Redirect or show details based on notification type
-    const notificationSnapshot = await get(notificationRef);
-    if (notificationSnapshot.exists()) {
-      const notification = notificationSnapshot.val();
-      if (notification.type === 'match' && notification.postId && notification.matchedWithId) {
-        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}&matchedWith=${encodeURIComponent(notification.matchedWithId)}`;
-      } else if (notification.postId) {
-        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}`;
+  // Calculate semantic similarity between two texts
+  calculateSemanticSimilarity(text1, text2) {
+    const words1 = this.extractKeywords(text1.toLowerCase());
+    const words2 = this.extractKeywords(text2.toLowerCase());
+    
+    let matches = 0;
+    let semanticMatches = 0;
+    
+    // Exact word matches
+    words1.forEach(word1 => {
+      if (words2.includes(word1)) {
+        matches++;
       } else {
-        await showNotificationDetail({ ...notification, id: notificationId });
+        // Check semantic groups
+        for (const group of Object.values(this.semanticGroups)) {
+          if (group.includes(word1)) {
+            words2.forEach(word2 => {
+              if (group.includes(word2) && word1 !== word2) {
+                semanticMatches += 0.7; // Partial match for related terms
+              }
+            });
+          }
+        }
+      }
+    });
+    
+    const totalWords = Math.max(words1.length, words2.length);
+    return totalWords > 0 ? (matches + semanticMatches) / totalWords : 0;
+  }
+
+  // Extract meaningful keywords from text
+  extractKeywords(text) {
+    const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'was', 'are', 'were', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their'];
+    return text.split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.includes(word))
+      .map(word => word.replace(/[^\w]/g, ''));
+  }
+
+  // Calculate visual similarity based on image characteristics
+  calculateVisualSimilarity(post1, post2) {
+    // This is a simplified version - in a real implementation, 
+    // you'd use computer vision APIs or ML models
+    let similarity = 0;
+    
+    // Both have images
+    if (post1.imageData && post2.imageData) {
+      similarity += 0.3;
+      
+      // Check if both images are present (basic check)
+      if (post1.imageData.length > 1000 && post2.imageData.length > 1000) {
+        similarity += 0.2;
       }
     }
+    
+    // Color analysis (simplified - checking for common color terms)
+    const colorTerms = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'brown', 'gray', 'silver', 'gold'];
+    const post1Colors = colorTerms.filter(color => 
+      (post1.title + ' ' + (post1.description || '')).toLowerCase().includes(color)
+    );
+    const post2Colors = colorTerms.filter(color => 
+      (post2.title + ' ' + (post2.description || '')).toLowerCase().includes(color)
+    );
+    
+    const commonColors = post1Colors.filter(color => post2Colors.includes(color));
+    similarity += commonColors.length * 0.1;
+    
+    return Math.min(similarity, 1);
   }
+
+  // Calculate location proximity (simplified)
+  calculateLocationProximity(post1, post2) {
+    // In a real implementation, you'd use actual GPS coordinates
+    // For now, we'll use a simplified approach based on location text
+    if (post1.location && post2.location) {
+      const loc1 = post1.location.toLowerCase();
+      const loc2 = post2.location.toLowerCase();
+      
+      if (loc1 === loc2) return 1;
+      
+      // Check for common area terms
+      const areas1 = loc1.split(/[,\s]+/);
+      const areas2 = loc2.split(/[,\s]+/);
+      const commonAreas = areas1.filter(area => areas2.includes(area));
+      
+      return commonAreas.length > 0 ? 0.6 : 0.2;
+    }
+    return 0.5; // Default score when location is unknown
+  }
+
+  // Calculate temporal relevance
+  calculateTemporalRelevance(post1, post2) {
+    const now = Date.now();
+    const time1 = post1.timestamp || now;
+    const time2 = post2.timestamp || now;
+    
+    const timeDiff = Math.abs(time1 - time2);
+    const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+    
+    // Items lost/found closer in time are more likely to be related
+    if (daysDiff <= 1) return 1;
+    if (daysDiff <= 7) return 0.8;
+    if (daysDiff <= 30) return 0.5;
+    return 0.2;
+  }
+
+  // Generate AI recommendations
+  async generateRecommendations(userPosts, allPosts) {
+    const recommendations = [];
+    
+    const otherPosts = Object.entries(allPosts)
+      .filter(([, post]) => post.user?.uid !== currentUser.uid && !post.claimed)
+      .map(([id, post]) => ({ id, ...post }));
+
+    for (const userPost of userPosts) {
+      const userType = userPost.type?.toLowerCase();
+      if (userType !== "lost" && userType !== "found") continue;
+
+      for (const otherPost of otherPosts) {
+        const otherType = otherPost.type?.toLowerCase();
+        if (!otherType || userType === otherType) continue;
+
+        const recommendation = this.calculateRecommendationScore(userPost, otherPost);
+        
+        if (recommendation.totalScore > 0.3) { // Threshold for showing recommendations
+          recommendations.push({
+            userPost,
+            matchedPost: otherPost,
+            ...recommendation
+          });
+        }
+      }
+    }
+
+    // Sort by total score and return top recommendations
+    return recommendations
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, 20); // Limit to top 20 recommendations
+  }
+
+  // Calculate comprehensive recommendation score
+  calculateRecommendationScore(userPost, otherPost) {
+    const scores = {};
+    
+    // Combine title, description, and labels for text analysis
+    const userText = [userPost.title, userPost.description, ...(userPost.labels || [])].join(' ');
+    const otherText = [otherPost.title, otherPost.description, ...(otherPost.labels || [])].join(' ');
+    
+    // Calculate individual scores
+    scores.semantic = this.calculateSemanticSimilarity(userText, otherText);
+    scores.visual = this.calculateVisualSimilarity(userPost, otherPost);
+    scores.location = this.calculateLocationProximity(userPost, otherPost);
+    scores.temporal = this.calculateTemporalRelevance(userPost, otherPost);
+    
+    // Label exact matches (existing logic)
+    const userLabels = (userPost.labels || []).map(l => l.toLowerCase());
+    const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
+    const sharedLabels = userLabels.filter(l => l !== "lost" && l !== "found" && otherLabels.includes(l));
+    scores.exactMatch = sharedLabels.length > 0 ? 1 : 0;
+    
+    // Calculate weighted total score
+    const totalScore = (
+      scores.exactMatch * this.weightings.exactMatch +
+      scores.semantic * this.weightings.semanticSimilarity +
+      scores.visual * this.weightings.visualSimilarity +
+      scores.location * this.weightings.locationProximity +
+      scores.temporal * this.weightings.temporalRelevance
+    ) / Object.values(this.weightings).reduce((a, b) => a + b, 0);
+
+    // Determine match category
+    let matchCategory = 'low';
+    if (scores.exactMatch > 0 || scores.semantic > 0.7) matchCategory = 'high';
+    else if (scores.semantic > 0.4 || scores.visual > 0.6) matchCategory = 'medium';
+    else if (scores.visual > 0.4) matchCategory = 'visual';
+
+    // Identify matching factors
+    const matchingFactors = [];
+    if (sharedLabels.length > 0) matchingFactors.push(...sharedLabels);
+    if (scores.semantic > 0.3) matchingFactors.push('Similar Description');
+    if (scores.visual > 0.4) matchingFactors.push('Visual Similarity');
+    if (scores.location > 0.6) matchingFactors.push('Same Area');
+    if (scores.temporal > 0.8) matchingFactors.push('Recent Timeline');
+
+    return {
+      totalScore,
+      scores,
+      matchCategory,
+      sharedLabels,
+      matchingFactors,
+      confidence: Math.min(totalScore * 100, 95) // Convert to percentage, cap at 95%
+    };
+  }
+}
+
+// Initialize AI Engine
+const aiEngine = new AIRecommendationEngine();
+
+// AI Recommendations UI Management
+async function showAIRecommendations() {
+  if (!currentUser) {
+    alert("Please log in to use AI recommendations.");
+    return;
+  }
+
+  const section = document.getElementById('aiRecommendationsSection');
+  const grid = document.getElementById('recommendationsGrid');
+  
+  // Show section and loading state
+  section.style.display = 'block';
+  grid.innerHTML = `
+    <div class="loading-recommendations">
+      <div class="loading-spinner"></div>
+      <p>AI is analyzing posts and generating recommendations...</p>
+    </div>
+  `;
+
+  try {
+    // Get all posts
+    const postsSnapshot = await get(ref(db, 'posts'));
+    const postsData = postsSnapshot.val();
+    
+    if (!postsData) {
+      grid.innerHTML = `
+        <div class="no-recommendations">
+          <i class="fas fa-search"></i>
+          <h3>No posts available</h3>
+          <p>There are no posts to analyze for recommendations.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Get user's posts
+    const userPosts = Object.entries(postsData)
+      .filter(([, post]) => post.user?.uid === currentUser.uid)
+      .map(([id, post]) => ({ id, ...post }));
+
+    if (userPosts.length === 0) {
+      grid.innerHTML = `
+        <div class="no-recommendations">
+          <i class="fas fa-plus-circle"></i>
+          <h3>Create a post first</h3>
+          <p>You need to create a post before we can generate AI recommendations.</p>
+          <button onclick="window.location.href='post-creation.html'" class="btn" style="margin-top: 1rem;">
+            <i class="fas fa-plus"></i> Create Post
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    // Generate AI recommendations
+    const recommendations = await aiEngine.generateRecommendations(userPosts, postsData);
+    
+    if (recommendations.length === 0) {
+      grid.innerHTML = `
+        <div class="no-recommendations">
+          <i class="fas fa-robot"></i>
+          <h3>No matches found</h3>
+          <p>AI couldn't find any potential matches at the moment. Check back later as new posts are added!</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Render recommendations
+    renderRecommendations(recommendations);
+    
+    // Update AI insights
+    updateAIInsights(recommendations);
+    
+  } catch (error) {
+    console.error('Error generating AI recommendations:', error);
+    grid.innerHTML = `
+      <div class="no-recommendations">
+        <i class="fas fa-exclamation-triangle"></i>
+        <h3>Error generating recommendations</h3>
+        <p>Something went wrong. Please try again later.</p>
+      </div>
+    `;
+  }
+}
+
+function renderRecommendations(recommendations, filter = 'all') {
+  const grid = document.getElementById('recommendationsGrid');
+  
+  // Filter recommendations based on selected filter
+  let filteredRecs = recommendations;
+  if (filter !== 'all') {
+    filteredRecs = recommendations.filter(rec => rec.matchCategory === filter);
+  }
+  
+  if (filteredRecs.length === 0) {
+    grid.innerHTML = `
+      <div class="no-recommendations">
+        <i class="fas fa-filter"></i>
+        <h3>No matches in this category</h3>
+        <p>Try selecting a different filter or check "All Recommendations".</p>
+      </div>
+    `;
+    return;
+  }
+  
+  grid.innerHTML = filteredRecs.map(rec => createRecommendationCard(rec)).join('');
+}
+
+function createRecommendationCard(recommendation) {
+  const { userPost, matchedPost, totalScore, matchCategory, matchingFactors, confidence } = recommendation;
+  
+  const scorePercentage = Math.round(confidence);
+  const scoreClass = matchCategory;
+  
+  return `
+    <div class="recommendation-card" data-category="${matchCategory}">
+      <div class="recommendation-header">
+        <div class="match-score score-${scoreClass}">
+          <i class="fas fa-star"></i>
+          <span>${scorePercentage}% Match</span>
+        </div>
+        <div class="score-bar">
+          <div class="score-fill ${scoreClass}" style="width: ${scorePercentage}%"></div>
+        </div>
+      </div>
+      
+      <div class="recommendation-content">
+        <div class="post-preview">
+          <div class="post-type ${userPost.type}">${userPost.type.toUpperCase()}</div>
+          <div class="post-title">${escapeHtml(userPost.title)}</div>
+          ${userPost.imageData ? 
+            `<img src="${userPost.imageData}" alt="${escapeHtml(userPost.title)}" class="post-image" 
+                  onerror="this.onerror=null;this.src='default-image.png';" />` : 
+            ''
+          }
+        </div>
+        
+        <div class="post-preview">
+          <div class="post-type ${matchedPost.type}">${matchedPost.type.toUpperCase()}</div>
+          <div class="post-title">${escapeHtml(matchedPost.title)}</div>
+          ${matchedPost.imageData ? 
+            `<img src="${matchedPost.imageData}" alt="${escapeHtml(matchedPost.title)}" class="post-image" 
+                  onerror="this.onerror=null;this.src='default-image.png';" />` : 
+            ''
+          }
+        </div>
+      </div>
+      
+      <div class="match-factors">
+        <h4><i class="fas fa-link"></i> Matching Factors</h4>
+        <div class="factor-list">
+          ${matchingFactors.map(factor => `<span class="factor-tag">${escapeHtml(factor)}</span>`).join('')}
+        </div>
+      </div>
+      
+      <div class="recommendation-actions">
+        <button class="rec-btn rec-btn-primary" onclick="viewRecommendedPost('${matchedPost.id}')">
+          <i class="fas fa-eye"></i> View Details
+        </button>
+        <button class="rec-btn rec-btn-secondary" onclick="contactForRecommendation('${matchedPost.id}', '${userPost.id}')">
+          <i class="fas fa-comment"></i> Contact
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function updateAIInsights(recommendations) {
+  const insightsContent = document.getElementById('aiInsightsContent');
+  
+  const totalRecs = recommendations.length;
+  const highMatches = recommendations.filter(r => r.matchCategory === 'high').length;
+  const mediumMatches = recommendations.filter(r => r.matchCategory === 'medium').length;
+  const visualMatches = recommendations.filter(r => r.matchCategory === 'visual').length;
+  
+  const avgConfidence = recommendations.reduce((sum, r) => sum + r.confidence, 0) / totalRecs;
+  
+  insightsContent.innerHTML = `
+    <div style="margin-bottom: 1rem;">
+      <p><strong>Analysis Summary:</strong></p>
+      <p>Found ${totalRecs} potential matches with an average confidence of ${Math.round(avgConfidence)}%</p>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+      <div style="background: #e8f5e8; padding: 1rem; border-radius: 8px; text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: bold; color: #27ae60;">${highMatches}</div>
+        <div style="color: #27ae60;">High Matches</div>
+      </div>
+      <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: bold; color: #f39c12;">${mediumMatches}</div>
+        <div style="color: #f39c12;">Medium Matches</div>
+      </div>
+      <div style="background: #f3e5f5; padding: 1rem; border-radius: 8px; text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: bold; color: #9b59b6;">${visualMatches}</div>
+        <div style="color: #9b59b6;">Visual Matches</div>
+      </div>
+    </div>
+    
+    <p>The AI analyzes multiple factors to find the best matches:</p>
+    <ul>
+      <li><i class="fas fa-tag"></i> Tag similarity and semantic meaning</li>
+      <li><i class="fas fa-font"></i> Text description analysis</li>
+      <li><i class="fas fa-image"></i> Visual characteristics comparison</li>
+      <li><i class="fas fa-map-marker-alt"></i> Location proximity</li>
+      <li><i class="fas fa-clock"></i> Temporal relevance</li>
+    </ul>
+  `;
+}
+
+// Global functions for recommendation interactions
+window.viewRecommendedPost = (postId) => {
+  window.location.href = `post-details.html?id=${encodeURIComponent(postId)}`;
+};
+
+window.contactForRecommendation = async (postId, userPostId) => {
+  // Open claim modal for the recommended post
+  window.openClaimModal(postId);
+};
+
+// Initialize event handlers for AI recommendations
+document.addEventListener('DOMContentLoaded', () => {
+  // AI Recommendations button
+  const aiBtn = document.getElementById('aiRecommendationsBtn');
+  if (aiBtn) {
+    aiBtn.addEventListener('click', showAIRecommendations);
+  }
+  
+  // Filter buttons
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('filter-btn')) {
+      // Update active filter
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      e.target.classList.add('active');
+      
+      // Get current recommendations and re-render with filter
+      const filter = e.target.dataset.filter;
+      const currentRecs = window.currentRecommendations || [];
+      renderRecommendations(currentRecs, filter);
+    }
+  });
 });
+
+// Store recommendations globally for filtering
+window.currentRecommendations = [];

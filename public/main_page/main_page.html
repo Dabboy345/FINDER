@@ -31,6 +31,48 @@
       <button id="findMatchesBtn" class="btn" style="margin-top:1rem;">
         <i class="fas fa-link"></i> Find Matches
       </button>
+      <!-- AI RECOMMENDATIONS BUTTON -->
+      <button id="aiRecommendationsBtn" class="btn ai-recommendations-btn" style="margin-top:1rem; margin-left:1rem;">
+        <i class="fas fa-brain"></i> AI Recommendations
+      </button>
+    </div>
+
+    <!-- AI Recommendations Section -->
+    <div id="aiRecommendationsSection" class="ai-recommendations-section" style="display: none;">
+      <div class="ai-header">
+        <div class="ai-title">
+          <i class="fas fa-brain ai-icon"></i>
+          <h2>AI-Powered Recommendations</h2>
+        </div>
+        <p class="ai-subtitle">Intelligent suggestions based on advanced matching algorithms</p>
+      </div>
+      
+      <div class="recommendations-container">
+        <div class="recommendation-filters">
+          <button class="filter-btn active" data-filter="all">All Recommendations</button>
+          <button class="filter-btn" data-filter="high">High Match</button>
+          <button class="filter-btn" data-filter="medium">Medium Match</button>
+          <button class="filter-btn" data-filter="visual">Visual Similarity</button>
+        </div>
+        
+        <div id="recommendationsGrid" class="recommendations-grid">
+          <!-- AI recommendations will be populated here -->
+        </div>
+        
+        <div class="ai-insights">
+          <h3><i class="fas fa-lightbulb"></i> AI Insights</h3>
+          <div id="aiInsightsContent">
+            <p>The AI analyzes multiple factors to find the best matches:</p>
+            <ul>
+              <li><i class="fas fa-tag"></i> Tag similarity and semantic meaning</li>
+              <li><i class="fas fa-font"></i> Text description analysis</li>
+              <li><i class="fas fa-image"></i> Visual characteristics comparison</li>
+              <li><i class="fas fa-map-marker-alt"></i> Location proximity</li>
+              <li><i class="fas fa-clock"></i> Temporal relevance</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="posts-container">
