@@ -1182,59 +1182,142 @@ async function enhancedFindMatches() {
   checkForMatchSuggestions(myPosts, postsData);
 }
 
-// AI-Powered Recommendation System
+// Enhanced AI-Powered Recommendation System
 class AIRecommendationEngine {
   constructor() {
     this.weightings = {
-      exactMatch: 10,
-      semanticSimilarity: 8,
-      visualSimilarity: 6,
+      exactMatch: 12,
+      semanticSimilarity: 10,
+      visualSimilarity: 8,
+      descriptionMatch: 7,
+      categoryMatch: 6,
+      colorMatch: 5,
+      sizeMatch: 4,
       locationProximity: 4,
       temporalRelevance: 3,
-      userBehavior: 2
+      brandMatch: 6
     };
     
-    // Common synonyms and related terms for better matching
+    // Enhanced semantic groups with more comprehensive categorization
     this.semanticGroups = {
-      electronics: ['phone', 'mobile', 'smartphone', 'iphone', 'android', 'tablet', 'laptop', 'computer', 'headphones', 'earbuds', 'charger', 'cable'],
-      accessories: ['watch', 'ring', 'necklace', 'bracelet', 'earrings', 'jewelry', 'glasses', 'sunglasses'],
-      clothing: ['shirt', 'jacket', 'coat', 'pants', 'jeans', 'dress', 'skirt', 'shoes', 'sneakers', 'boots', 'hat', 'cap'],
-      bags: ['backpack', 'purse', 'wallet', 'bag', 'briefcase', 'handbag', 'suitcase', 'luggage'],
-      keys: ['keys', 'keychain', 'car keys', 'house keys', 'remote'],
-      documents: ['id', 'passport', 'license', 'card', 'document', 'paper', 'certificate'],
-      pets: ['dog', 'cat', 'pet', 'animal', 'puppy', 'kitten'],
-      sports: ['ball', 'basketball', 'football', 'soccer', 'tennis', 'golf', 'equipment']
+      electronics: {
+        main: ['phone', 'mobile', 'smartphone', 'iphone', 'android', 'tablet', 'laptop', 'computer', 'pc', 'macbook'],
+        accessories: ['headphones', 'earbuds', 'airpods', 'charger', 'cable', 'mouse', 'keyboard', 'case', 'cover'],
+        devices: ['camera', 'smartwatch', 'fitness tracker', 'bluetooth speaker', 'powerbank', 'adapter']
+      },
+      accessories: {
+        jewelry: ['watch', 'ring', 'necklace', 'bracelet', 'earrings', 'jewelry', 'chain', 'pendant'],
+        eyewear: ['glasses', 'sunglasses', 'spectacles', 'reading glasses', 'contacts'],
+        personal: ['hair clip', 'hair band', 'belt', 'tie', 'scarf', 'hat', 'cap', 'beanie']
+      },
+      clothing: {
+        tops: ['shirt', 'blouse', 't-shirt', 'tshirt', 'sweater', 'hoodie', 'jacket', 'coat', 'blazer'],
+        bottoms: ['pants', 'jeans', 'shorts', 'skirt', 'dress', 'trousers', 'leggings'],
+        footwear: ['shoes', 'sneakers', 'boots', 'sandals', 'heels', 'flats', 'slippers'],
+        undergarments: ['socks', 'underwear', 'bra', 'stockings']
+      },
+      bags: {
+        daily: ['backpack', 'purse', 'handbag', 'shoulder bag', 'tote bag', 'messenger bag'],
+        travel: ['suitcase', 'luggage', 'duffle bag', 'carry-on', 'briefcase'],
+        small: ['wallet', 'purse', 'clutch', 'coin purse', 'card holder']
+      },
+      keys: ['keys', 'keychain', 'car keys', 'house keys', 'office keys', 'remote', 'key fob', 'access card'],
+      documents: ['id', 'passport', 'license', 'driving license', 'card', 'credit card', 'document', 'paper', 'certificate', 'ticket'],
+      pets: ['dog', 'cat', 'pet', 'animal', 'puppy', 'kitten', 'bird', 'hamster', 'rabbit'],
+      sports: ['ball', 'basketball', 'football', 'soccer ball', 'tennis ball', 'golf ball', 'equipment', 'racket', 'bat'],
+      vehicles: ['car', 'bike', 'bicycle', 'motorcycle', 'scooter', 'skateboard']
     };
+
+    // Color variations and synonyms
+    this.colorVariations = {
+      red: ['red', 'crimson', 'scarlet', 'burgundy', 'maroon', 'cherry'],
+      blue: ['blue', 'navy', 'azure', 'cobalt', 'turquoise', 'teal', 'cyan'],
+      green: ['green', 'lime', 'olive', 'emerald', 'forest', 'mint'],
+      yellow: ['yellow', 'gold', 'golden', 'amber', 'lemon', 'cream'],
+      black: ['black', 'dark', 'charcoal', 'ebony', 'jet'],
+      white: ['white', 'cream', 'ivory', 'pearl', 'snow'],
+      brown: ['brown', 'tan', 'beige', 'khaki', 'bronze', 'chocolate'],
+      gray: ['gray', 'grey', 'silver', 'ash', 'slate'],
+      purple: ['purple', 'violet', 'lavender', 'plum', 'magenta'],
+      pink: ['pink', 'rose', 'salmon', 'coral', 'fuchsia'],
+      orange: ['orange', 'coral', 'peach', 'tangerine', 'rust']
+    };
+
+    // Size indicators
+    this.sizeTerms = {
+      small: ['small', 'mini', 'tiny', 'little', 'compact', 'petite'],
+      medium: ['medium', 'regular', 'standard', 'normal', 'average'],
+      large: ['large', 'big', 'huge', 'giant', 'oversized', 'xl', 'xxl']
+    };
+
+    // Brand patterns
+    this.commonBrands = [
+      'apple', 'samsung', 'google', 'microsoft', 'sony', 'nike', 'adidas', 'puma',
+      'louis vuitton', 'gucci', 'prada', 'chanel', 'rolex', 'casio', 'fossil',
+      'dell', 'hp', 'lenovo', 'asus', 'acer', 'canon', 'nikon'
+    ];
   }
 
-  // Calculate semantic similarity between two texts
+  // Enhanced semantic similarity calculation
   calculateSemanticSimilarity(text1, text2) {
     const words1 = this.extractKeywords(text1.toLowerCase());
     const words2 = this.extractKeywords(text2.toLowerCase());
     
-    let matches = 0;
+    let exactMatches = 0;
     let semanticMatches = 0;
+    let categoryMatches = 0;
     
-    // Exact word matches
+    // Calculate exact word matches
     words1.forEach(word1 => {
       if (words2.includes(word1)) {
-        matches++;
+        exactMatches++;
       } else {
-        // Check semantic groups
-        for (const group of Object.values(this.semanticGroups)) {
-          if (group.includes(word1)) {
-            words2.forEach(word2 => {
-              if (group.includes(word2) && word1 !== word2) {
-                semanticMatches += 0.7; // Partial match for related terms
+        // Check semantic groups with hierarchical matching
+        this.findSemanticMatches(word1, words2, (match, strength) => {
+          semanticMatches += strength;
+        });
+      }
+    });
+    
+    const totalWords = Math.max(words1.length, words2.length, 1);
+    const exactScore = exactMatches / totalWords;
+    const semanticScore = semanticMatches / totalWords;
+    
+    return Math.min(exactScore + semanticScore * 0.7, 1);
+  }
+
+  // Find semantic matches with different strength levels
+  findSemanticMatches(word, targetWords, callback) {
+    for (const [category, subcategories] of Object.entries(this.semanticGroups)) {
+      if (typeof subcategories === 'object' && !Array.isArray(subcategories)) {
+        // Handle subcategorized groups
+        for (const [subcat, items] of Object.entries(subcategories)) {
+          if (items.includes(word)) {
+            targetWords.forEach(targetWord => {
+              if (items.includes(targetWord) && word !== targetWord) {
+                callback(targetWord, 0.9); // High similarity within same subcategory
+              } else {
+                // Check other subcategories in same category
+                for (const [otherSubcat, otherItems] of Object.entries(subcategories)) {
+                  if (otherSubcat !== subcat && otherItems.includes(targetWord)) {
+                    callback(targetWord, 0.6); // Medium similarity within same category
+                  }
+                }
               }
             });
           }
         }
+      } else if (Array.isArray(subcategories)) {
+        // Handle simple arrays
+        if (subcategories.includes(word)) {
+          targetWords.forEach(targetWord => {
+            if (subcategories.includes(targetWord) && word !== targetWord) {
+              callback(targetWord, 0.8);
+            }
+          });
+        }
       }
-    });
-    
-    const totalWords = Math.max(words1.length, words2.length);
-    return totalWords > 0 ? (matches + semanticMatches) / totalWords : 0;
+    }
   }
 
   // Extract meaningful keywords from text
@@ -1245,35 +1328,239 @@ class AIRecommendationEngine {
       .map(word => word.replace(/[^\w]/g, ''));
   }
 
-  // Calculate visual similarity based on image characteristics
+  // Enhanced visual similarity with comprehensive analysis
   calculateVisualSimilarity(post1, post2) {
-    // This is a simplified version - in a real implementation, 
-    // you'd use computer vision APIs or ML models
-    let similarity = 0;
+    let visualScore = 0;
+    let confidenceFactors = [];
     
-    // Both have images
-    if (post1.imageData && post2.imageData) {
-      similarity += 0.3;
+    // Image presence analysis
+    const post1HasImage = post1.imageData && post1.imageData.length > 1000;
+    const post2HasImage = post2.imageData && post2.imageData.length > 1000;
+    
+    if (post1HasImage && post2HasImage) {
+      visualScore += 0.25;
+      confidenceFactors.push('Both have images');
       
-      // Check if both images are present (basic check)
-      if (post1.imageData.length > 1000 && post2.imageData.length > 1000) {
-        similarity += 0.2;
+      // Advanced image analysis simulation
+      const imageAnalysis = this.analyzeImageCharacteristics(post1, post2);
+      visualScore += imageAnalysis.score;
+      confidenceFactors.push(...imageAnalysis.factors);
+    } else if (post1HasImage || post2HasImage) {
+      // One has image, use text-based visual cues
+      visualScore += 0.1;
+    }
+    
+    // Color matching with variations
+    const colorMatch = this.calculateColorSimilarity(post1, post2);
+    visualScore += colorMatch.score;
+    if (colorMatch.matches.length > 0) {
+      confidenceFactors.push(`Color match: ${colorMatch.matches.join(', ')}`);
+    }
+    
+    // Size and dimension analysis
+    const sizeMatch = this.calculateSizeSimilarity(post1, post2);
+    visualScore += sizeMatch.score;
+    if (sizeMatch.category) {
+      confidenceFactors.push(`Size category: ${sizeMatch.category}`);
+    }
+    
+    // Material and texture analysis
+    const materialMatch = this.calculateMaterialSimilarity(post1, post2);
+    visualScore += materialMatch.score;
+    if (materialMatch.materials.length > 0) {
+      confidenceFactors.push(`Materials: ${materialMatch.materials.join(', ')}`);
+    }
+    
+    return {
+      score: Math.min(visualScore, 1),
+      factors: confidenceFactors,
+      details: {
+        hasImages: post1HasImage && post2HasImage,
+        colorMatches: colorMatch.matches,
+        sizeCategory: sizeMatch.category,
+        materials: materialMatch.materials
+      }
+    };
+  }
+
+  // Simulate advanced image analysis
+  analyzeImageCharacteristics(post1, post2) {
+    let score = 0;
+    let factors = [];
+    
+    // Image size comparison (basic)
+    const size1 = post1.imageData.length;
+    const size2 = post2.imageData.length;
+    const sizeDiff = Math.abs(size1 - size2) / Math.max(size1, size2);
+    
+    if (sizeDiff < 0.3) {
+      score += 0.15;
+      factors.push('Similar image complexity');
+    }
+    
+    // Image format analysis (basic)
+    const format1 = this.getImageFormat(post1.imageData);
+    const format2 = this.getImageFormat(post2.imageData);
+    
+    if (format1 === format2) {
+      score += 0.05;
+      factors.push(`Same format: ${format1}`);
+    }
+    
+    // Brightness analysis (simulated)
+    const brightness1 = this.estimateBrightness(post1);
+    const brightness2 = this.estimateBrightness(post2);
+    
+    if (Math.abs(brightness1 - brightness2) < 0.3) {
+      score += 0.1;
+      factors.push('Similar lighting conditions');
+    }
+    
+    return { score, factors };
+  }
+
+  // Get image format from data URL
+  getImageFormat(imageData) {
+    if (imageData.includes('data:image/jpeg')) return 'JPEG';
+    if (imageData.includes('data:image/png')) return 'PNG';
+    if (imageData.includes('data:image/gif')) return 'GIF';
+    if (imageData.includes('data:image/webp')) return 'WebP';
+    return 'Unknown';
+  }
+
+  // Estimate brightness from description and context
+  estimateBrightness(post) {
+    const text = (post.title + ' ' + (post.description || '')).toLowerCase();
+    const brightTerms = ['bright', 'light', 'white', 'sunny', 'clear', 'shiny'];
+    const darkTerms = ['dark', 'black', 'shadow', 'dim', 'night', 'evening'];
+    
+    const brightCount = brightTerms.filter(term => text.includes(term)).length;
+    const darkCount = darkTerms.filter(term => text.includes(term)).length;
+    
+    // Return value between 0 (dark) and 1 (bright)
+    return 0.5 + (brightCount - darkCount) * 0.1;
+  }
+
+  // Enhanced color similarity calculation
+  calculateColorSimilarity(post1, post2) {
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedColors = [];
+    let score = 0;
+    
+    // Check for color variations and synonyms
+    for (const [baseColor, variations] of Object.entries(this.colorVariations)) {
+      const post1HasColor = variations.some(color => text1.includes(color));
+      const post2HasColor = variations.some(color => text2.includes(color));
+      
+      if (post1HasColor && post2HasColor) {
+        matchedColors.push(baseColor);
+        score += 0.2; // High score for exact color family match
       }
     }
     
-    // Color analysis (simplified - checking for common color terms)
-    const colorTerms = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'brown', 'gray', 'silver', 'gold'];
-    const post1Colors = colorTerms.filter(color => 
-      (post1.title + ' ' + (post1.description || '')).toLowerCase().includes(color)
-    );
-    const post2Colors = colorTerms.filter(color => 
-      (post2.title + ' ' + (post2.description || '')).toLowerCase().includes(color)
-    );
+    // Check for multi-color descriptions
+    const colorPattern = /(multi.*color|rainbow|colorful|various.*color)/i;
+    if (colorPattern.test(text1) && colorPattern.test(text2)) {
+      matchedColors.push('multicolor');
+      score += 0.15;
+    }
     
-    const commonColors = post1Colors.filter(color => post2Colors.includes(color));
-    similarity += commonColors.length * 0.1;
+    return {
+      score: Math.min(score, 0.5), // Cap at 0.5 for color matching
+      matches: matchedColors
+    };
+  }
+
+  // Calculate size similarity
+  calculateSizeSimilarity(post1, post2) {
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
     
-    return Math.min(similarity, 1);
+    let matchedCategory = null;
+    let score = 0;
+    
+    for (const [sizeCategory, terms] of Object.entries(this.sizeTerms)) {
+      const post1HasSize = terms.some(term => text1.includes(term));
+      const post2HasSize = terms.some(term => text2.includes(term));
+      
+      if (post1HasSize && post2HasSize) {
+        matchedCategory = sizeCategory;
+        score = 0.15;
+        break;
+      }
+    }
+    
+    // Check for specific measurements (simplified)
+    const measurementPattern = /(\d+)\s*(cm|mm|inch|"|'|ft|meter|m)\b/gi;
+    const measurements1 = text1.match(measurementPattern) || [];
+    const measurements2 = text2.match(measurementPattern) || [];
+    
+    if (measurements1.length > 0 && measurements2.length > 0) {
+      score += 0.1;
+      matchedCategory = matchedCategory || 'measured';
+    }
+    
+    return {
+      score,
+      category: matchedCategory
+    };
+  }
+
+  // Calculate material similarity
+  calculateMaterialSimilarity(post1, post2) {
+    const materials = {
+      metal: ['metal', 'steel', 'aluminum', 'gold', 'silver', 'brass', 'copper', 'iron'],
+      plastic: ['plastic', 'polymer', 'acrylic', 'vinyl', 'pvc'],
+      fabric: ['cotton', 'wool', 'silk', 'polyester', 'nylon', 'denim', 'leather', 'suede'],
+      glass: ['glass', 'crystal', 'transparent', 'clear'],
+      wood: ['wood', 'wooden', 'timber', 'oak', 'pine', 'bamboo'],
+      rubber: ['rubber', 'silicone', 'elastic'],
+      paper: ['paper', 'cardboard', 'card']
+    };
+    
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedMaterials = [];
+    let score = 0;
+    
+    for (const [materialType, terms] of Object.entries(materials)) {
+      const post1HasMaterial = terms.some(term => text1.includes(term));
+      const post2HasMaterial = terms.some(term => text2.includes(term));
+      
+      if (post1HasMaterial && post2HasMaterial) {
+        matchedMaterials.push(materialType);
+        score += 0.1;
+      }
+    }
+    
+    return {
+      score: Math.min(score, 0.3), // Cap at 0.3 for material matching
+      materials: matchedMaterials
+    };
+  }
+
+  // Enhanced brand detection
+  calculateBrandSimilarity(post1, post2) {
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedBrands = [];
+    let score = 0;
+    
+    for (const brand of this.commonBrands) {
+      if (text1.includes(brand) && text2.includes(brand)) {
+        matchedBrands.push(brand);
+        score += 0.2; // High score for brand matches
+      }
+    }
+    
+    return {
+      score: Math.min(score, 0.4), // Cap at 0.4 for brand matching
+      brands: matchedBrands
+    };
   }
 
   // Calculate location proximity (simplified)
@@ -1346,17 +1633,44 @@ class AIRecommendationEngine {
       .slice(0, 20); // Limit to top 20 recommendations
   }
 
-  // Calculate comprehensive recommendation score
+  // Enhanced comprehensive recommendation score calculation
   calculateRecommendationScore(userPost, otherPost) {
     const scores = {};
+    const detailedAnalysis = {};
     
     // Combine title, description, and labels for text analysis
     const userText = [userPost.title, userPost.description, ...(userPost.labels || [])].join(' ');
     const otherText = [otherPost.title, otherPost.description, ...(otherPost.labels || [])].join(' ');
     
-    // Calculate individual scores
+    // Calculate individual scores with detailed analysis
     scores.semantic = this.calculateSemanticSimilarity(userText, otherText);
-    scores.visual = this.calculateVisualSimilarity(userPost, otherPost);
+    
+    // Enhanced visual analysis
+    const visualAnalysis = this.calculateVisualSimilarity(userPost, otherPost);
+    scores.visual = visualAnalysis.score;
+    detailedAnalysis.visual = visualAnalysis;
+    
+    // Color matching
+    const colorAnalysis = this.calculateColorSimilarity(userPost, otherPost);
+    scores.color = colorAnalysis.score;
+    detailedAnalysis.colors = colorAnalysis.matches;
+    
+    // Size matching
+    const sizeAnalysis = this.calculateSizeSimilarity(userPost, otherPost);
+    scores.size = sizeAnalysis.score;
+    detailedAnalysis.size = sizeAnalysis.category;
+    
+    // Material matching
+    const materialAnalysis = this.calculateMaterialSimilarity(userPost, otherPost);
+    scores.material = materialAnalysis.score;
+    detailedAnalysis.materials = materialAnalysis.materials;
+    
+    // Brand matching
+    const brandAnalysis = this.calculateBrandSimilarity(userPost, otherPost);
+    scores.brand = brandAnalysis.score;
+    detailedAnalysis.brands = brandAnalysis.brands;
+    
+    // Location and temporal (existing logic)
     scores.location = this.calculateLocationProximity(userPost, otherPost);
     scores.temporal = this.calculateTemporalRelevance(userPost, otherPost);
     
@@ -1366,26 +1680,51 @@ class AIRecommendationEngine {
     const sharedLabels = userLabels.filter(l => l !== "lost" && l !== "found" && otherLabels.includes(l));
     scores.exactMatch = sharedLabels.length > 0 ? 1 : 0;
     
-    // Calculate weighted total score
+    // Calculate weighted total score with enhanced weights
     const totalScore = (
       scores.exactMatch * this.weightings.exactMatch +
       scores.semantic * this.weightings.semanticSimilarity +
       scores.visual * this.weightings.visualSimilarity +
+      scores.color * this.weightings.colorMatch +
+      scores.size * this.weightings.sizeMatch +
+      scores.material * this.weightings.descriptionMatch +
+      scores.brand * this.weightings.brandMatch +
       scores.location * this.weightings.locationProximity +
       scores.temporal * this.weightings.temporalRelevance
     ) / Object.values(this.weightings).reduce((a, b) => a + b, 0);
 
-    // Determine match category
+    // Enhanced match category determination
     let matchCategory = 'low';
-    if (scores.exactMatch > 0 || scores.semantic > 0.7) matchCategory = 'high';
-    else if (scores.semantic > 0.4 || scores.visual > 0.6) matchCategory = 'medium';
-    else if (scores.visual > 0.4) matchCategory = 'visual';
+    let confidence = totalScore * 100;
+    
+    if (scores.exactMatch > 0 && (scores.visual > 0.5 || scores.semantic > 0.7)) {
+      matchCategory = 'high';
+      confidence = Math.min(confidence + 15, 95);
+    } else if (scores.exactMatch > 0 || scores.semantic > 0.6 || (scores.visual > 0.4 && scores.color > 0.2)) {
+      matchCategory = 'high';
+      confidence = Math.min(confidence + 10, 90);
+    } else if (scores.semantic > 0.4 || scores.visual > 0.6 || (scores.color > 0.2 && scores.size)) {
+      matchCategory = 'medium';
+      confidence = Math.min(confidence + 5, 85);
+    } else if (scores.visual > 0.3 || scores.color > 0.15) {
+      matchCategory = 'visual';
+    }
 
-    // Identify matching factors
+    // Enhanced matching factors identification
     const matchingFactors = [];
     if (sharedLabels.length > 0) matchingFactors.push(...sharedLabels);
     if (scores.semantic > 0.3) matchingFactors.push('Similar Description');
     if (scores.visual > 0.4) matchingFactors.push('Visual Similarity');
+    if (detailedAnalysis.colors && detailedAnalysis.colors.length > 0) {
+      matchingFactors.push(`Color: ${detailedAnalysis.colors.join(', ')}`);
+    }
+    if (detailedAnalysis.size) matchingFactors.push(`Size: ${detailedAnalysis.size}`);
+    if (detailedAnalysis.materials && detailedAnalysis.materials.length > 0) {
+      matchingFactors.push(`Material: ${detailedAnalysis.materials.join(', ')}`);
+    }
+    if (detailedAnalysis.brands && detailedAnalysis.brands.length > 0) {
+      matchingFactors.push(`Brand: ${detailedAnalysis.brands.join(', ')}`);
+    }
     if (scores.location > 0.6) matchingFactors.push('Same Area');
     if (scores.temporal > 0.8) matchingFactors.push('Recent Timeline');
 
@@ -1395,7 +1734,130 @@ class AIRecommendationEngine {
       matchCategory,
       sharedLabels,
       matchingFactors,
-      confidence: Math.min(totalScore * 100, 95) // Convert to percentage, cap at 95%
+      confidence: Math.min(confidence, 95),
+      detailedAnalysis
+    };
+  }
+
+  // Enhanced color similarity calculation
+  calculateColorSimilarity(post1, post2) {
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedColors = [];
+    let score = 0;
+    
+    // Check for color variations and synonyms
+    for (const [baseColor, variations] of Object.entries(this.colorVariations)) {
+      const post1HasColor = variations.some(color => text1.includes(color));
+      const post2HasColor = variations.some(color => text2.includes(color));
+      
+      if (post1HasColor && post2HasColor) {
+        matchedColors.push(baseColor);
+        score += 0.2; // High score for exact color family match
+      }
+    }
+    
+    // Check for multi-color descriptions
+    const colorPattern = /(multi.*color|rainbow|colorful|various.*color)/i;
+    if (colorPattern.test(text1) && colorPattern.test(text2)) {
+      matchedColors.push('multicolor');
+      score += 0.15;
+    }
+    
+    return {
+      score: Math.min(score, 0.5), // Cap at 0.5 for color matching
+      matches: matchedColors
+    };
+  }
+
+  // Calculate size similarity
+  calculateSizeSimilarity(post1, post2) {
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedCategory = null;
+    let score = 0;
+    
+    for (const [sizeCategory, terms] of Object.entries(this.sizeTerms)) {
+      const post1HasSize = terms.some(term => text1.includes(term));
+      const post2HasSize = terms.some(term => text2.includes(term));
+      
+      if (post1HasSize && post2HasSize) {
+        matchedCategory = sizeCategory;
+        score = 0.15;
+        break;
+      }
+    }
+    
+    // Check for specific measurements (simplified)
+    const measurementPattern = /(\d+)\s*(cm|mm|inch|"|'|ft|meter|m)\b/gi;
+    const measurements1 = text1.match(measurementPattern) || [];
+    const measurements2 = text2.match(measurementPattern) || [];
+    
+    if (measurements1.length > 0 && measurements2.length > 0) {
+      score += 0.1;
+      matchedCategory = matchedCategory || 'measured';
+    }
+    
+    return {
+      score,
+      category: matchedCategory
+    };
+  }
+
+  // Calculate material similarity
+  calculateMaterialSimilarity(post1, post2) {
+    const materials = {
+      metal: ['metal', 'steel', 'aluminum', 'gold', 'silver', 'brass', 'copper', 'iron'],
+      plastic: ['plastic', 'polymer', 'acrylic', 'vinyl', 'pvc'],
+      fabric: ['cotton', 'wool', 'silk', 'polyester', 'nylon', 'denim', 'leather', 'suede'],
+      glass: ['glass', 'crystal', 'transparent', 'clear'],
+      wood: ['wood', 'wooden', 'timber', 'oak', 'pine', 'bamboo'],
+      rubber: ['rubber', 'silicone', 'elastic'],
+      paper: ['paper', 'cardboard', 'card']
+    };
+    
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedMaterials = [];
+    let score = 0;
+    
+    for (const [materialType, terms] of Object.entries(materials)) {
+      const post1HasMaterial = terms.some(term => text1.includes(term));
+      const post2HasMaterial = terms.some(term => text2.includes(term));
+      
+      if (post1HasMaterial && post2HasMaterial) {
+        matchedMaterials.push(materialType);
+        score += 0.1;
+      }
+    }
+    
+    return {
+      score: Math.min(score, 0.3), // Cap at 0.3 for material matching
+      materials: matchedMaterials
+    };
+  }
+
+  // Enhanced brand detection
+  calculateBrandSimilarity(post1, post2) {
+    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
+    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
+    
+    let matchedBrands = [];
+    let score = 0;
+    
+    for (const brand of this.commonBrands) {
+      if (text1.includes(brand) && text2.includes(brand)) {
+        matchedBrands.push(brand);
+        score += 0.2; // High score for brand matches
+      }
+    }
+    
+    return {
+      score: Math.min(score, 0.4), // Cap at 0.4 for brand matching
+      brands: matchedBrands
     };
   }
 }
