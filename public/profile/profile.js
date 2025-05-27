@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { getDatabase, ref, onValue, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { getDatabase, ref, onValue, query, orderByChild, equalTo, update, push, get, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
@@ -19,6 +19,111 @@ const db = getDatabase(app);
 
 let currentUser = null;
 let userPosts = [];
+
+// Chat functionality
+let currentChatId = null;
+let currentOtherUserId = null;
+let currentOtherUserEmail = null;
+
+function generateChatId(user1Id, user2Id, postId) {
+  return [user1Id, user2Id, postId].sort().join('_');
+}
+
+async function openChat(postId, otherUserId, otherUserEmail) {
+  if (!currentUser) return;
+
+  currentChatId = generateChatId(currentUser.uid, otherUserId, postId);
+  currentOtherUserId = otherUserId;
+  currentOtherUserEmail = otherUserEmail;
+
+  document.getElementById('chatWithUser').textContent = `Chatting with ${otherUserEmail}`;
+  document.getElementById('chatModal').style.display = 'block';
+  document.getElementById('chatMessages').innerHTML = '';
+
+  // Load existing messages
+  await loadMessages();
+
+  // Set up real-time listener for new messages
+  listenToNewMessages();
+}
+
+async function loadMessages() {
+  const chatRef = ref(db, `chats/${currentChatId}/messages`);
+  const snapshot = await get(chatRef);
+  const messages = snapshot.val();
+  if (messages) {
+    displayMessages(Object.values(messages));
+  }
+}
+
+function listenToNewMessages() {
+  const chatRef = ref(db, `chats/${currentChatId}/messages`);
+  onValue(chatRef, (snapshot) => {
+    const messages = snapshot.val();
+    if (messages) {
+      displayMessages(Object.values(messages));
+    }
+  });
+}
+
+function displayMessages(messages) {
+  const chatMessages = document.getElementById('chatMessages');
+  chatMessages.innerHTML = messages
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map(msg => `
+      <div class="message ${msg.senderId === currentUser.uid ? 'sent' : 'received'}">
+        ${escapeHtml(msg.text)}
+        <div class="timestamp">${new Date(msg.timestamp).toLocaleString()}</div>
+      </div>
+    `).join('');
+  
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function sendMessage(text) {
+  if (!text.trim() || !currentChatId || !currentUser) return;
+
+  const chatRef = ref(db, `chats/${currentChatId}/messages`);
+  const newMessageRef = push(chatRef);
+  
+  await set(newMessageRef, {
+    text: text.trim(),
+    senderId: currentUser.uid,
+    senderEmail: currentUser.email,
+    timestamp: Date.now()
+  });
+
+  // Create notification for the other user
+  await createNotification(
+    currentOtherUserId,
+    'New Message',
+    `${currentUser.email} sent you a message`,
+    'message',
+    currentChatId.split('_')[2],
+    { chatId: currentChatId }
+  );
+}
+
+// Event Listeners for Chat
+document.querySelector('.close-chat').addEventListener('click', () => {
+  document.getElementById('chatModal').style.display = 'none';
+  currentChatId = null;
+  currentOtherUserId = null;
+  currentOtherUserEmail = null;
+});
+
+document.getElementById('sendChatMessage').addEventListener('click', async () => {
+  const input = document.getElementById('chatMessageInput');
+  await sendMessage(input.value);
+  input.value = '';
+});
+
+document.getElementById('chatMessageInput').addEventListener('keypress', async (e) => {
+  if (e.key === 'Enter') {
+    await sendMessage(e.target.value);
+    e.target.value = '';
+  }
+});
 
 // Check authentication state
 onAuthStateChanged(auth, (user) => {
@@ -81,9 +186,12 @@ function updatePostsDisplay(posts) {
       <div class="post-header">
         <h3>${escapeHtml(post.title)}</h3>
       </div>
+      
       <img src="${post.imageData || 'default-image.png'}" alt="${escapeHtml(post.title)}" 
            onerror="this.onerror=null;this.src='default-image.png';" />
+      
       ${post.description ? `<p>${escapeHtml(post.description)}</p>` : ''}
+      
       ${post.labels?.length ? `
         <div class="labels">
           ${post.labels.map(label => `
@@ -91,15 +199,31 @@ function updatePostsDisplay(posts) {
           `).join('')}
         </div>
       ` : ''}
+      
       <div class="post-meta">
-        <div class="timestamp">
-          <i class="fas fa-clock"></i>
-          <span>${new Date(post.timestamp).toLocaleString()}</span>
+        <div class="post-info">
+          <div class="timestamp">
+            <i class="fas fa-clock"></i>
+            <span>${new Date(post.timestamp).toLocaleString()}</span>
+          </div>
         </div>
+
         ${post.claimed ? `
           <div class="claim-status claimed">
-            <i class="fas fa-check-circle"></i>
-            <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
+            <div class="claim-info">
+              <i class="fas fa-check-circle"></i>
+              <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
+            </div>
+            ${currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid) ? `
+              <button class="chat-btn" onclick="openChat('${post.id}', '${
+                currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid
+              }', '${
+                currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email
+              }')">
+                <i class="fas fa-comments"></i>
+                Chat with the claimer
+              </button>
+            ` : ''}
           </div>
         ` : `
           <div class="claim-status unclaimed">
@@ -158,4 +282,29 @@ function escapeHtml(text) {
     '"': "&quot;",
     "'": "&#39;"
   })[m]);
-} 
+}
+
+// Notification functionality
+async function createNotification(toUserId, title, message, type, postId, additionalData = {}) {
+  if (!toUserId) return;
+
+  const notificationsRef = ref(db, `notifications/${toUserId}`);
+  const newNotificationRef = push(notificationsRef);
+  
+  await set(newNotificationRef, {
+    title,
+    message,
+    type,
+    postId,
+    timestamp: Date.now(),
+    read: false,
+    from: {
+      uid: currentUser.uid,
+      email: currentUser.email
+    },
+    ...additionalData
+  });
+}
+
+// Make openChat function globally available
+window.openChat = openChat; 
