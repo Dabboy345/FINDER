@@ -49,3 +49,8 @@ function validatePassword(password) {
   }
   return null; // Password is valid
 }
+
+// Handle logo click - redirect to home page
+document.querySelector('.logo').addEventListener('click', () => {
+  window.location.href = '../index.html';
+});

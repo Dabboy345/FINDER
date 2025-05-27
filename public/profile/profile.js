@@ -272,6 +272,11 @@ document.getElementById('logoutBtn').addEventListener('click', async (e) => {
   }
 });
 
+// Handle logo click - redirect to main page
+document.querySelector('.logo').addEventListener('click', () => {
+  window.location.href = '../main_page/main_page.html';
+});
+
 // Helper function to escape HTML
 function escapeHtml(text) {
   if (!text) return "";

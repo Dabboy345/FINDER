@@ -744,6 +744,11 @@ document.getElementById('homeBtn').addEventListener('click', (e) => {
   }
 });
 
+// Handle logo click - redirect to main page
+document.querySelector('.logo').addEventListener('click', () => {
+  window.location.href = './main_page.html';
+});
+
 document.getElementById('logoutBtn').addEventListener('click', async (e) => {
   e.preventDefault();
   try {

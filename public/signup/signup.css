@@ -22,6 +22,13 @@ header {
 .logo {
   font-weight: bold;
   font-size: 24px;
+  cursor: pointer;
+  transition: color 0.3s ease, transform 0.2s ease;
+}
+
+.logo:hover {
+  color: #3498db;
+  transform: scale(1.05);
 }
 
 nav a {

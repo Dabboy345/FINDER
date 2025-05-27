@@ -61,3 +61,13 @@ document.getElementById('forgotPasswordBtn').addEventListener('click', async () 
 document.getElementById('signInBtn').addEventListener('click', () => {
   window.location.href = './signup/signup.html';
 });
+
+// Handle logo click - stay on login page
+document.querySelector('.logo-container').addEventListener('click', () => {
+  window.location.href = './index.html';
+});
+
+// Handle logo text click
+document.querySelector('.logo-text').addEventListener('click', () => {
+  window.location.href = './index.html';
+});
