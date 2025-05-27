@@ -194,6 +194,21 @@ onValue(postsRef, async (snapshot) => {
       window.location.href = `post-details.html?id=${encodeURIComponent(postId)}`;
     });
   });
+
+  // Trigger auto-suggestions after posts are loaded (if user is logged in)
+  if (currentUser) {
+    // Get user's posts
+    const myPosts = Object.entries(data)
+      .filter(([, post]) => post.user?.uid === currentUser.uid)
+      .map(([id, post]) => ({ id, ...post }));
+    
+    // Check for auto-suggestions after a short delay to let user browse
+    if (myPosts.length > 0) {
+      setTimeout(() => {
+        checkForMatchSuggestions(myPosts, data);
+      }, 5000); // Show suggestions after 5 seconds of browsing
+    }
+  }
 }, (error) => {
   console.error("Error loading posts:", error);
   postsContainer.innerHTML = "<p>Error loading posts.</p>";
@@ -922,6 +937,11 @@ document.getElementById('findMatchesBtn').addEventListener('click', async () => 
     }
   }
 
+  if (myPosts.length === 0) {
+    alert("You need to create a post first to find matches.");
+    return;
+  }
+
   // Try to find matches for each of the user's posts
   let foundMatch = false;
   let matchInfo = null;
@@ -969,47 +989,197 @@ document.getElementById('findMatchesBtn').addEventListener('click', async () => 
             read: false
           });
         }
-        // Only notify for the first match per post
+        // Show the enhanced match modal
+        showMatchSuggestionModal(myPost, otherPost, shared);
         break;
       }
     }
-    if (foundMatch && matchInfo) {
-      showMatchModal(matchInfo.myPost, matchInfo.otherPost, matchInfo.shared);
-      alert("Match found! Check notifications for details.");
+    if (foundMatch) {
       break;
     }
   }
   if (!foundMatch) {
-    alert("No matches found based on labels.");
+    alert("No matches found based on labels. Keep checking back as new posts are added!");
   }
 });
 
-// Update notification click handler to redirect to post-details for match notifications
-function setupNotificationClickHandler() {
-  notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
-    item.addEventListener('click', async () => {
-      const notificationId = item.dataset.id;
-      const notificationRef = ref(db, `notifications/${notificationId}`);
-      await update(notificationRef, { read: true });
-      item.classList.remove('unread');
-      unreadNotifications--;
-      updateNotificationBadge(unreadNotifications);
+// Enhanced Match Suggestion Modal Functions
+function showMatchSuggestionModal(myPost, matchedPost, sharedLabels) {
+  const modal = document.getElementById('matchSuggestionModal');
+  const yourPostDetails = document.getElementById('yourPostDetails');
+  const matchedPostDetails = document.getElementById('matchedPostDetails');
+  const sharedLabelsSpan = document.getElementById('sharedLabels');
 
-      // Fetch notification data
-      const snapshot = await get(notificationRef);
-      const notification = snapshot.val();
-      if (!notification) return;
+  // Populate your post details
+  yourPostDetails.innerHTML = `
+    <div class="post-title">${escapeHtml(myPost.title)}</div>
+    ${myPost.imageData ? 
+      `<img src="${myPost.imageData}" alt="${escapeHtml(myPost.title)}" class="post-image" 
+            onerror="this.onerror=null;this.src='default-image.png';" />` : 
+      ''
+    }
+    ${myPost.description ? 
+      `<div class="post-description">${escapeHtml(myPost.description)}</div>` : 
+      ''
+    }
+    <div class="post-labels">
+      ${(myPost.labels || []).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+    </div>
+  `;
 
-      // Redirect for match notifications
-      if (notification.type === 'match' && notification.postId && notification.matchedWithId) {
-        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}&matchedWith=${encodeURIComponent(notification.matchedWithId)}`;
-      } else if (notification.postId) {
-        window.location.href = `post-details.html?id=${encodeURIComponent(notification.postId)}`;
-      } else {
-        await showNotificationDetail({ ...notification, id: notificationId });
+  // Populate matched post details
+  matchedPostDetails.innerHTML = `
+    <div class="post-title">${escapeHtml(matchedPost.title)}</div>
+    ${matchedPost.imageData ? 
+      `<img src="${matchedPost.imageData}" alt="${escapeHtml(matchedPost.title)}" class="post-image" 
+            onerror="this.onerror=null;this.src='default-image.png';" />` : 
+      ''
+    }
+    ${matchedPost.description ? 
+      `<div class="post-description">${escapeHtml(matchedPost.description)}</div>` : 
+      ''
+    }
+    <div class="post-labels">
+      ${(matchedPost.labels || []).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+    </div>
+  `;
+
+  // Show shared labels
+  sharedLabelsSpan.textContent = sharedLabels.join(', ');
+
+  // Set up button handlers
+  document.getElementById('viewMatchDetailsBtn').onclick = () => {
+    modal.style.display = 'none';
+    window.location.href = `post-details.html?id=${encodeURIComponent(matchedPost.id)}&matchedWith=${encodeURIComponent(myPost.id)}`;
+  };
+
+  document.getElementById('dismissMatchBtn').onclick = () => {
+    modal.style.display = 'none';
+  };
+
+  document.getElementById('closeMatchModal').onclick = () => {
+    modal.style.display = 'none';
+  };
+
+  modal.style.display = 'flex';
+}
+
+// Auto-suggestion system for browsing users
+let suggestionTimeouts = new Set();
+
+function checkForMatchSuggestions(userPosts, allPosts) {
+  if (!currentUser || !userPosts.length) return;
+
+  const otherPosts = Object.entries(allPosts)
+    .filter(([, post]) => post.user?.uid !== currentUser.uid)
+    .map(([id, post]) => ({ id, ...post }));
+
+  for (const myPost of userPosts) {
+    const myType = myPost.type?.toLowerCase();
+    if (myType !== "lost" && myType !== "found") continue;
+    const myLabels = (myPost.labels || []).map(l => l.toLowerCase());
+
+    for (const otherPost of otherPosts) {
+      const otherType = otherPost.type?.toLowerCase();
+      if (!otherType || myType === otherType) continue;
+      const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
+
+      // Find shared labels (excluding "lost"/"found")
+      const shared = myLabels.filter(
+        l => l !== "lost" && l !== "found" && otherLabels.includes(l)
+      );
+      
+      if (shared.length > 0) {
+        // Show suggestion popup after a delay
+        const timeoutId = setTimeout(() => {
+          showMatchSuggestionPopup(myPost, otherPost, shared);
+          suggestionTimeouts.delete(timeoutId);
+        }, 3000); // Show after 3 seconds of browsing
+        
+        suggestionTimeouts.add(timeoutId);
+        return; // Show only one suggestion at a time
       }
-    });
-  });
+    }
+  }
+}
+
+function showMatchSuggestionPopup(myPost, matchedPost, sharedLabels) {
+  // Remove any existing popup
+  const existingPopup = document.querySelector('.match-suggestion-popup');
+  if (existingPopup) {
+    existingPopup.remove();
+  }
+
+  const popup = document.createElement('div');
+  popup.className = 'match-suggestion-popup';
+  popup.innerHTML = `
+    <div class="suggestion-header">
+      <i class="fas fa-lightbulb"></i>
+      <span>Possible Match Found!</span>
+    </div>
+    <div class="suggestion-content">
+      <p><strong>Your post:</strong> ${escapeHtml(myPost.title)}</p>
+      <p><strong>Potential match:</strong> ${escapeHtml(matchedPost.title)}</p>
+      <p><strong>Common tags:</strong> ${sharedLabels.join(', ')}</p>
+    </div>
+    <div class="suggestion-actions">
+      <button class="suggestion-view" onclick="viewSuggestionMatch('${matchedPost.id}', '${myPost.id}')">
+        <i class="fas fa-eye"></i> View
+      </button>
+      <button class="suggestion-dismiss" onclick="dismissSuggestion()">
+        <i class="fas fa-times"></i> Dismiss
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+
+  // Auto-dismiss after 15 seconds
+  setTimeout(() => {
+    if (popup.parentNode) {
+      popup.remove();
+    }
+  }, 15000);
+}
+
+// Global functions for suggestion popup
+window.viewSuggestionMatch = (matchedPostId, myPostId) => {
+  dismissSuggestion();
+  window.location.href = `post-details.html?id=${encodeURIComponent(matchedPostId)}&matchedWith=${encodeURIComponent(myPostId)}`;
+};
+
+window.dismissSuggestion = () => {
+  const popup = document.querySelector('.match-suggestion-popup');
+  if (popup) {
+    popup.remove();
+  }
+};
+
+// Enhanced Find Matches function
+async function enhancedFindMatches() {
+  if (!currentUser) {
+    alert("Please log in to use the matching feature.");
+    return;
+  }
+
+  const postsSnapshot = await get(ref(db, 'posts'));
+  const postsData = postsSnapshot.val();
+  if (!postsData) {
+    alert("No posts available for matching.");
+    return;
+  }
+
+  // Get user's posts
+  const myPosts = Object.entries(postsData)
+    .filter(([, post]) => post.user?.uid === currentUser.uid)
+    .map(([id, post]) => ({ id, ...post }));
+
+  if (myPosts.length === 0) {
+    alert("You need to create a post first to find matches.");
+    return;
+  }
+
+  checkForMatchSuggestions(myPosts, postsData);
 }
 
 // Call this after loading notifications

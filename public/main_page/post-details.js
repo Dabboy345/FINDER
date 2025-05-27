@@ -80,7 +80,7 @@ function renderPostDetails(post, isOwner, postId, matchedWithPost = null) {
             This is your post - waiting for someone to claim it
           </div>
         ` : `
-          <button class="btn" id="claimBtn"><i class="fas fa-hand-holding"></i> Claim Item</button>
+          <button class="btn claim-btn" id="claimBtn"><i class="fas fa-hand-holding"></i> Claim Item</button>
         `}
         ${isOwner ? `
           <button class="btn" id="editBtn"><i class="fas fa-edit"></i> Edit</button>

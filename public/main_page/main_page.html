@@ -77,6 +77,44 @@
     </div>
   </div>
 
+  <!-- Match Suggestion Modal -->
+  <div id="matchSuggestionModal" class="modal" style="display: none;">
+    <div class="modal-content match-modal">
+      <span class="close" id="closeMatchModal">&times;</span>
+      <div class="match-header">
+        <i class="fas fa-link match-icon"></i>
+        <h2>You have a possible match!</h2>
+      </div>
+      <div class="match-content">
+        <p>We found a potential match based on your item characteristics:</p>
+        <div class="match-comparison">
+          <div class="match-item">
+            <h3>Your Post</h3>
+            <div id="yourPostDetails"></div>
+          </div>
+          <div class="match-arrow">
+            <i class="fas fa-arrows-alt-h"></i>
+          </div>
+          <div class="match-item">
+            <h3>Potential Match</h3>
+            <div id="matchedPostDetails"></div>
+          </div>
+        </div>
+        <div class="shared-labels">
+          <p><strong>Matching characteristics:</strong> <span id="sharedLabels"></span></p>
+        </div>
+        <div class="match-actions">
+          <button id="viewMatchDetailsBtn" class="btn btn-primary">
+            <i class="fas fa-eye"></i> View Details
+          </button>
+          <button id="dismissMatchBtn" class="btn btn-secondary">
+            <i class="fas fa-times"></i> Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="main_page.js"></script>
 </body>
 </html>
