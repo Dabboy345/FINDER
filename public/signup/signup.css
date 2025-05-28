@@ -1,14 +1,19 @@
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background-color: #fff;
-  color: #000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: linear-gradient(135deg, #f5f6fa 0%, #e8f4fd 100%);
+  color: #2c3e50;
+  min-height: 100vh;
 }
 
 header {
-  background-color: #fff;
-  padding: 1rem;
-  border-bottom: 1px solid #ddd;
+  background: linear-gradient(90deg, #f8fafc 60%, #e8f4fd 100%);
+  padding: 1.5rem;
+  border-bottom: 1px solid #e1e8ed;
+  box-shadow: 0 4px 20px rgba(52, 152, 219, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .nav-container {
@@ -20,15 +25,20 @@ header {
 }
 
 .logo {
-  font-weight: bold;
-  font-size: 24px;
+  font-weight: 900;
+  font-size: 2.2rem;
+  color: #3498db;
+  letter-spacing: 2px;
   cursor: pointer;
-  transition: color 0.3s ease, transform 0.2s ease;
+  text-shadow: 0 2px 8px rgba(52, 152, 219, 0.1);
+  transition: all 0.3s ease;
+  user-select: none;
 }
 
 .logo:hover {
-  color: #3498db;
-  transform: scale(1.05);
+  color: #2980b9;
+  transform: scale(1.08) rotate(-2deg);
+  text-shadow: 0 4px 16px rgba(52, 152, 219, 0.2);
 }
 
 nav a {
@@ -44,12 +54,34 @@ nav input[type="search"] {
 
 main {
   max-width: 500px;
-  margin: 2rem auto;
+  margin: 3rem auto;
   text-align: left;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 20px;
+  padding: 3rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08), 0 8px 20px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(228, 233, 242, 0.8);
+  position: relative;
+  overflow: hidden;
+}
+
+main::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #3498db, #2ecc71);
+  border-radius: 20px 20px 0 0;
 }
 
 h2 {
   text-align: center;
+  color: #2c3e50;
+  font-size: 2rem;
+  margin-bottom: 2rem;
+  font-weight: 700;
 }
 
 form {
@@ -58,56 +90,124 @@ form {
 }
 
 label {
-  margin-top: 10px;
+  margin-top: 1.5rem;
+  font-weight: 600;
+  color: #34495e;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
 }
 
 input {
-  padding: 10px;
-  margin-top: 5px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  border: 2px solid #e1e8ed;
+  border-radius: 12px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.02);
+  background: linear-gradient(145deg, #ffffff 0%, #f0f8ff 100%);
+  transform: translateY(-1px);
+}
+
+input:hover {
+  border-color: #bdc3c7;
+  background: linear-gradient(145deg, #ffffff 0%, #f0f8ff 100%);
 }
 
 small {
-  margin: 5px 0 15px;
-  font-size: 12px;
-  color: #555;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
+  color: #7f8c8d;
+  line-height: 1.4;
 }
 
 .btn-group {
   display: flex;
   justify-content: space-between;
-  margin-top: 20px;
+  margin-top: 2rem;
+  gap: 1rem;
 }
 
 .btn-group button {
-  padding: 10px;
+  padding: 1rem 1.5rem;
   border: none;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 12px;
   flex: 1;
-  margin: 5px;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-group button:first-child {
-  border: 1px solid #000;
-  background: #fff;
+  border: 2px solid #3498db;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  color: #3498db;
+}
+
+.btn-group button:first-child:hover {
+  background: linear-gradient(145deg, #3498db 0%, #2980b9 100%);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
 }
 
 .btn-group button:last-child {
-  background: #000;
-  color: #fff;
+  background: linear-gradient(145deg, #3498db 0%, #2980b9 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+}
+
+.btn-group button:last-child:hover {
+  background: linear-gradient(145deg, #2980b9 0%, #1f5f8b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
+}
+
+.btn-group button:last-child::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.6s ease;
+}
+
+.btn-group button:last-child:hover::before {
+  left: 100%;
 }
 
 footer {
   margin-top: 4rem;
-  padding: 1rem;
-  border-top: 1px solid #ddd;
+  padding: 2rem 1rem;
+  border-top: 1px solid rgba(228, 233, 242, 0.6);
   text-align: center;
+  background: linear-gradient(135deg, #f8fafc 0%, #e8f4fd 100%);
 }
 
 footer a {
   margin: 0 15px;
   text-decoration: none;
-  color: #000;
+  color: #3498db;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+}
+
+footer a:hover {
+  color: #2980b9;
+  background: rgba(52, 152, 219, 0.1);
+  transform: translateY(-1px);
 }

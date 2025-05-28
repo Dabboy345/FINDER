@@ -35,22 +35,30 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 2rem;
-  background-color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem 2rem;
+  background: linear-gradient(90deg, #f8fafc 60%, #e8f4fd 100%);
+  box-shadow: 0 4px 20px rgba(52, 152, 219, 0.08);
+  border-bottom: 1px solid #e1e8ed;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .logo {
-  font-size: 1.5rem;
-  font-weight: bold;
+  font-size: 2.2rem;
+  font-weight: 900;
   color: #3498db;
+  letter-spacing: 2px;
   cursor: pointer;
-  transition: color 0.3s ease, transform 0.2s ease;
+  text-shadow: 0 2px 8px rgba(52, 152, 219, 0.1);
+  transition: all 0.3s ease;
+  user-select: none;
 }
 
 .logo:hover {
   color: #2980b9;
-  transform: scale(1.05);
+  transform: scale(1.08) rotate(-2deg);
+  text-shadow: 0 4px 16px rgba(52, 152, 219, 0.2);
 }
 
 .nav-links {
@@ -197,10 +205,24 @@ body {
 }
 
 .post-creation-container {
-  background-color: var(--card-background);
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: var(--card-shadow);
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 20px;
+  padding: 3rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08), 0 8px 20px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(228, 233, 242, 0.8);
+  position: relative;
+  overflow: hidden;
+}
+
+.post-creation-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #3498db, #2ecc71);
+  border-radius: 20px 20px 0 0;
 }
 
 .post-creation-container h1 {
@@ -229,17 +251,22 @@ body {
 .form-group input[type="text"],
 .form-group textarea {
   width: 100%;
-  padding: 0.8rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  padding: 1rem;
+  border: 2px solid #e1e8ed;
+  border-radius: 12px;
   font-size: 1rem;
-  transition: border-color 0.3s;
+  font-family: inherit;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .form-group input[type="text"]:focus,
 .form-group textarea:focus {
   outline: none;
   border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1), 0 4px 12px rgba(52, 152, 219, 0.15);
+  transform: translateY(-1px);
 }
 
 /* Post type buttons */
@@ -251,38 +278,65 @@ body {
 
 .type-btn {
   flex: 1;
-  padding: 1rem;
+  padding: 1.5rem;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  transition: all 0.3s;
+  gap: 0.75rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.type-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.type-btn:hover::before {
+  left: 100%;
 }
 
 .type-btn.lost-btn {
   color: var(--lost-color);
   border: 2px solid var(--lost-color);
+  background: linear-gradient(145deg, #ffffff 0%, #fdf2f2 100%);
 }
 
 .type-btn.found-btn {
   color: var(--found-color);
   border: 2px solid var(--found-color);
+  background: linear-gradient(145deg, #ffffff 0%, #f0f9f4 100%);
 }
 
 .type-btn.lost-btn.active {
-  background-color: var(--lost-color);
+  background: linear-gradient(135deg, var(--lost-color) 0%, #c0392b 100%);
   color: white;
   border-color: transparent;
+  box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4);
 }
 
 .type-btn.found-btn.active {
-  background-color: var(--found-color);
+  background: linear-gradient(135deg, var(--found-color) 0%, #229954 100%);
   color: white;
   border-color: transparent;
+  box-shadow: 0 8px 25px rgba(46, 204, 113, 0.4);
+}
+
+.type-btn:hover {
+  transform: translateY(-2px);
 }
 
 /* Image upload styles */
@@ -339,30 +393,54 @@ body {
 
 .form-actions button {
   flex: 1;
-  padding: 1rem;
+  padding: 1.2rem;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.form-actions button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.form-actions button:hover::before {
+  left: 100%;
 }
 
 .cancel-btn {
-  background-color: #95a5a6;
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
   color: white;
+  box-shadow: 0 4px 15px rgba(149, 165, 166, 0.3);
 }
 
 .submit-btn {
-  background-color: #3498db;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
   color: white;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
 }
 
 .cancel-btn:hover {
-  background-color: #7f8c8d;
+  background: linear-gradient(135deg, #7f8c8d 0%, #6c7b7d 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(149, 165, 166, 0.4);
 }
 
 .submit-btn:hover {
-  background-color: #2980b9;
+  background: linear-gradient(135deg, #2980b9 0%, #1f6391 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
 }
 
 /* Responsive design */
@@ -383,5 +461,3 @@ body {
     gap: 1rem;
   }
 }
-
-<link rel="stylesheet" href="post-creation.css" />

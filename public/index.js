@@ -63,11 +63,17 @@ document.getElementById('signInBtn').addEventListener('click', () => {
 });
 
 // Handle logo click - stay on login page
-document.querySelector('.logo-container').addEventListener('click', () => {
-  window.location.href = './index.html';
-});
+const logoContainer = document.querySelector('.logo-container');
+if (logoContainer) {
+  logoContainer.addEventListener('click', () => {
+    window.location.href = './index.html';
+  });
+}
 
 // Handle logo text click
-document.querySelector('.logo-text').addEventListener('click', () => {
-  window.location.href = './index.html';
-});
+const logoText = document.querySelector('.logo-text');
+if (logoText) {
+  logoText.addEventListener('click', () => {
+    window.location.href = './index.html';
+  });
+}

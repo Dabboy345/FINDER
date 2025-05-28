@@ -51,6 +51,9 @@ function validatePassword(password) {
 }
 
 // Handle logo click - redirect to home page
-document.querySelector('.logo').addEventListener('click', () => {
-  window.location.href = '../index.html';
-});
+const logoElement = document.querySelector('.logo');
+if (logoElement) {
+  logoElement.addEventListener('click', () => {
+    window.location.href = '../index.html';
+  });
+}
