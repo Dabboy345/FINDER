@@ -1,3 +1,21 @@
+/* Update these color variables at the top of post-creation.css */
+
+:root {
+  --primary-color: #3498db;
+  --primary-hover: #2980b9;
+  --background-color: #f5f6fa;
+  --text-color: #2c3e50;
+  --text-light: #7f8c8d;
+  --border-color: #eee;
+  --notification-unread: #e8f4fd;
+  --notification-unread-hover: #d8ecfc;
+  --notification-badge: #e74c3c;
+  --card-background: white;
+  --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --lost-color: #e74c3c;
+  --found-color: #2ecc71;
+}
+
 /* General styles */
 * {
   margin: 0;
@@ -7,8 +25,8 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: #f5f6fa;
-  color: #2c3e50;
+  background-color: var(--background-color);
+  color: var(--text-color);
   min-height: 100vh;
 }
 
@@ -69,12 +87,12 @@ body {
 }
 
 .create-btn {
-  background-color: #3498db;
+  background-color: var(--primary-color);
   color: white !important;
 }
 
 .create-btn:hover {
-  background-color: #2980b9;
+  background-color: var(--primary-hover);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -83,28 +101,92 @@ body {
 .notification-container {
   position: relative;
   cursor: pointer;
+  margin: 0 1rem;
 }
 
 .notification-container i {
   font-size: 1.2rem;
-  color: #7f8c8d;
+  color: #7f8c8d; /* Light grey like main page */
   transition: color 0.3s;
 }
 
 .notification-container:hover i {
-  color: #3498db;
+  color: #3498db; /* Blue on hover like main page */
 }
 
 #notificationBadge {
   position: absolute;
-  top: -5px;
-  right: -5px;
-  background-color: #e74c3c;
+  top: -8px;
+  right: -8px;
+  background-color: var(--notification-badge);
   color: white;
   border-radius: 50%;
   padding: 2px 6px;
   font-size: 0.7rem;
   display: none;
+}
+
+.notification-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--card-background);
+  box-shadow: var(--card-shadow);
+  border-radius: 8px;
+  width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-top: 10px;
+}
+
+.notification-dropdown.show {
+  display: block;
+}
+
+.notification-item {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item:hover {
+  background-color: #f8f9fa;
+}
+
+.notification-item.unread {
+  background-color: var(--notification-unread);
+}
+
+.notification-item.unread:hover {
+  background-color: var(--notification-unread-hover);
+}
+
+.notification-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.notification-title i {
+  color: #3498db; /* Blue for notification items like main page */
+  margin-right: 8px;
+}
+
+.notification-message {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.notification-time {
+  font-size: 0.8rem;
+  color: #999;
 }
 
 /* Main content styles */
@@ -115,10 +197,10 @@ body {
 }
 
 .post-creation-container {
-  background-color: white;
+  background-color: var(--card-background);
   border-radius: 12px;
   padding: 2rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--card-shadow);
 }
 
 .post-creation-container h1 {
@@ -182,25 +264,25 @@ body {
 }
 
 .type-btn.lost-btn {
-  background-color: #fff;
-  color: #e74c3c;
-  border: 2px solid #e74c3c;
+  color: var(--lost-color);
+  border: 2px solid var(--lost-color);
 }
 
 .type-btn.found-btn {
-  background-color: #fff;
-  color: #2ecc71;
-  border: 2px solid #2ecc71;
+  color: var(--found-color);
+  border: 2px solid var(--found-color);
 }
 
 .type-btn.lost-btn.active {
-  background-color: #e74c3c;
+  background-color: var(--lost-color);
   color: white;
+  border-color: transparent;
 }
 
 .type-btn.found-btn.active {
-  background-color: #2ecc71;
+  background-color: var(--found-color);
   color: white;
+  border-color: transparent;
 }
 
 /* Image upload styles */
@@ -300,4 +382,6 @@ body {
   .nav-links {
     gap: 1rem;
   }
-} 
+}
+
+<link rel="stylesheet" href="post-creation.css" />

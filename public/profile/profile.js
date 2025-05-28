@@ -311,5 +311,115 @@ async function createNotification(toUserId, title, message, type, postId, additi
   });
 }
 
+// --- Notification Dropdown Logic (EXACTLY like main_page.js) ---
+
+// 1. Ensure the dropdown is a child of the notification-container
+const notificationContainer = document.querySelector('.notification-container');
+let notificationDropdown = notificationContainer.querySelector('.notification-dropdown');
+if (!notificationDropdown) {
+  notificationDropdown = document.createElement('div');
+  notificationDropdown.className = 'notification-dropdown';
+  notificationContainer.appendChild(notificationDropdown);
+}
+
+let unreadNotifications = 0;
+
+// 2. Badge update function
+function updateNotificationBadge(count) {
+  const badge = document.getElementById('notificationBadge');
+  if (count > 0) {
+    badge.style.display = 'block';
+    badge.textContent = count;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// 3. Listen for notifications (real-time badge)
+function listenForNotifications(userId) {
+  const notificationsRef = ref(db, 'notifications');
+  onValue(notificationsRef, (snapshot) => {
+    const data = snapshot.val();
+    if (!data) {
+      updateNotificationBadge(0);
+      return;
+    }
+    const unread = Object.values(data)
+      .filter(n => n.to === userId && !n.read)
+      .length;
+    updateNotificationBadge(unread);
+  });
+}
+
+// 4. Load notifications into dropdown
+async function loadNotifications() {
+  if (!currentUser) return;
+  const notificationsRef = ref(db, 'notifications');
+  const snapshot = await get(notificationsRef);
+  const data = snapshot.val();
+  if (!data) {
+    notificationDropdown.innerHTML = '<div class="notification-item">No notifications</div>';
+    return;
+  }
+  const notifications = Object.entries(data)
+    .filter(([, n]) => n.to === currentUser.uid)
+    .sort(([, a], [, b]) => (b.lastUpdated || b.timestamp || 0) - (a.lastUpdated || a.timestamp || 0));
+  notificationDropdown.innerHTML = notifications.map(([id, notification]) => {
+    const timeString = new Date(notification.lastUpdated || notification.timestamp).toLocaleString();
+    return `
+      <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
+        <div class="notification-title">
+          <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
+          ${notification.title}
+        </div>
+        <div class="notification-message">${notification.message}</div>
+        <div class="notification-time">${timeString}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Add click handler for notification items
+  notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const notificationId = item.dataset.id;
+      // Mark as read
+      await set(ref(db, `notifications/${notificationId}/read`), true);
+      item.classList.remove('unread');
+      // Redirect for match notifications
+      const notification = data[notificationId];
+      if (notification.type === 'match' && notification.postId && notification.matchedWithId) {
+        window.location.href = `../main_page/post-details.html?id=${encodeURIComponent(notification.postId)}&matchedWith=${encodeURIComponent(notification.matchedWithId)}`;
+      } else if (notification.postId) {
+        window.location.href = `../main_page/post-details.html?id=${encodeURIComponent(notification.postId)}`;
+      }
+    });
+  });
+}
+
+// 5. Toggle dropdown on bell click (not on the badge or dropdown itself)
+notificationContainer.addEventListener('click', (e) => {
+  // Only toggle if the bell or badge is clicked, not the dropdown itself
+  if (e.target.closest('.notification-dropdown')) return;
+  notificationDropdown.classList.toggle('show');
+  if (notificationDropdown.classList.contains('show')) {
+    loadNotifications();
+  }
+});
+
+// 6. Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!notificationContainer.contains(e.target) && !notificationDropdown.contains(e.target)) {
+    notificationDropdown.classList.remove('show');
+  }
+});
+
+// 7. Listen for notifications when user is logged in
+onAuthStateChanged(auth, (user) => {
+  currentUser = user;
+  if (user) {
+    listenForNotifications(user.uid);
+  }
+});
+
 // Make openChat function globally available
-window.openChat = openChat; 
+window.openChat = openChat;

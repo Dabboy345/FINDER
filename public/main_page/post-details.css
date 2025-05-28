@@ -1,0 +1,67 @@
+/* Create a new file post-details.css with the same color scheme */
+
+:root {
+  --primary-color: #3498db;
+  --primary-hover: #2980b9;
+  --background-color: #f5f6fa;
+  --text-color: #2c3e50;
+  --text-light: #7f8c8d;
+  --border-color: #eee;
+  --notification-unread: #e8f4fd;
+  --notification-unread-hover: #d8ecfc;
+  --notification-badge: #e74c3c;
+  --card-background: white;
+  --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --lost-color: #e74c3c;
+  --found-color: #2ecc71;
+}
+
+/* Add styles using the same color scheme */
+.post-details-card {
+  background-color: var(--card-background);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  padding: 2rem;
+}
+
+.btn {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.btn:hover {
+  background-color: var(--primary-hover);
+}
+
+/* Notification styles */
+.notification-dropdown {
+  background-color: var(--card-background);
+  box-shadow: var(--card-shadow);
+}
+
+.notification-item.unread {
+  background-color: var(--notification-unread);
+}
+
+.notification-item.unread:hover {
+  background-color: var(--notification-unread-hover);
+}
+
+.notification-container i {
+  font-size: 1.2rem;
+  color: #7f8c8d; /* Light grey like main page */
+  transition: color 0.3s;
+}
+
+.notification-container:hover i {
+  color: #3498db; /* Blue on hover like main page */
+}
+
+.notification-item .notification-title i {
+  color: #3498db; /* Blue for notification items like main page */
+  margin-right: 8px;
+}
+
+#notificationBadge {
+  background-color: var(--notification-badge);
+}
