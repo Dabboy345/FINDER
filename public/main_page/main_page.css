@@ -890,6 +890,17 @@ body {
     word-wrap: break-word;
 }
 
+.message-content {
+    background: linear-gradient(135deg, #f1f9ff 60%, #e8f4fd 100%);
+    padding: 0.7rem 1rem;
+    border-radius: 1rem 1rem 1rem 0.3rem;
+    font-size: 1rem;
+    color: #2c3e50;
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.07);
+    margin-bottom: 0.2rem;
+    word-break: break-word;
+}
+
 .message.sent {
     background-color: #3498db;
     color: white;
@@ -897,22 +908,22 @@ body {
     border-bottom-right-radius: 0.3rem;
 }
 
-.message.received {
-    background-color: #f0f2f5;
-    color: #2c3e50;
-    align-self: flex-start;
-    border-bottom-left-radius: 0.3rem;
+.message.sent .message-content {
+    background: linear-gradient(135deg, #3498db 70%, #6dd5fa 100%);
+    color: #fff;
+    border-radius: 1rem 1rem 0.3rem 1rem;
 }
 
 .message .timestamp {
-    font-size: 0.7rem;
-    opacity: 0.8;
-    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: #95a5a6;
+    opacity: 0.85;
+    margin-top: 0.15rem;
     text-align: right;
 }
 
 .message.sent .timestamp {
-    color: rgba(255, 255, 255, 0.8);
+    color: #e0eafc;
 }
 
 .message.received .timestamp {

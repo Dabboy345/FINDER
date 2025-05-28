@@ -442,7 +442,7 @@ async function loadNotifications() {
           ${escapeHtml(notification.title)}
         </div>
         <div class="notification-message">
-          ${claimCount > 1 ? 
+          ${claimCount > 1 ?
             `${claimCount} people want to claim your item` :
             escapeHtml(notification.message)
           }
@@ -793,7 +793,8 @@ async function openChat(postId, otherUserId, otherUserEmail) {
 
   currentChatId = generateChatId(currentUser.uid, otherUserId, postId);
   currentChatPartner = { uid: otherUserId, email: otherUserEmail };
-  currentChatPost = post;
+  // Ensure currentChatPost has an id property
+  currentChatPost = { ...post, id: postId };
 
   // Update chat modal info
   document.getElementById('chatWithUser').textContent = otherUserEmail;
@@ -858,21 +859,23 @@ async function sendMessage(text) {
     senderEmail: currentUser.email,
     timestamp: Date.now()
   };
-  
+
   await push(messagesRef, newMessage);
 
-  // Send notification to chat partner
-  await createNotification(
-    currentChatPartner.uid,
-    'New Message',
-    `${currentUser.email} sent you a message about: ${currentChatPost.title}`,
-    'chat',
-    currentChatPost.id,
-    {
-      chatId: currentChatId,
-      message: text.trim()
-    }
-  );
+  // Defensive: Only send notification if postId is defined
+  if (currentChatPost && currentChatPost.id) {
+    await createNotification(
+      currentChatPartner.uid,
+      'New Message',
+      `${currentUser.email} sent you a message about: ${currentChatPost.title}`,
+      'chat',
+      currentChatPost.id,
+      {
+        chatId: currentChatId,
+        message: text.trim()
+      }
+    );
+  }
 }
 
 // Chat modal event listeners
@@ -1821,3 +1824,117 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Store recommendations globally for filtering
 window.currentRecommendations = [];
+
+/* :root {
+  --primary-color: #3498db;
+  --primary-hover: #2980b9;
+  --background-color: #f5f6fa;
+  --text-color: #2c3e50;
+  --text-light: #7f8c8d;
+  --border-color: #eee;
+  --notification-unread: #e8f4fd;
+  --notification-unread-hover: #d8ecfc;
+  --notification-badge: #e74c3c;
+  --card-background: #fff;
+  --card-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  --lost-color: #e74c3c;
+  --found-color: #2ecc71;
+} */
+
+/* Card style for posts and modals */
+.post, .modal-content, .recommendation-card {
+  background: var(--card-background);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.post:hover, .recommendation-card:hover {
+  box-shadow: 0 8px 32px rgba(52,152,219,0.15);
+  transform: translateY(-4px) scale(1.01);
+}
+
+.btn, .rec-btn, .filter-btn {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  color: #fff;
+  border: none;
+  border-radius: 25px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(52,152,219,0.07);
+}
+
+.btn:hover, .rec-btn:hover, .filter-btn:hover {
+  background: linear-gradient(135deg, var(--primary-hover), var(--primary-color));
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 4px 16px rgba(52,152,219,0.15);
+}
+
+.message-content {
+  background: linear-gradient(135deg, #f1f9ff 60%, #e8f4fd 100%);
+  padding: 0.7rem 1rem;
+  border-radius: 1rem 1rem 1rem 0.3rem;
+  font-size: 1rem;
+  color: #2c3e50;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.07);
+  margin-bottom: 0.2rem;
+  word-break: break-word;
+}
+
+.message.sent .message-content {
+  background: linear-gradient(135deg, #3498db 70%, #6dd5fa 100%);
+  color: #fff;
+  border-radius: 1rem 1rem 0.3rem 1rem;
+}
+
+.message .timestamp {
+  font-size: 0.75rem;
+  color: #95a5a6;
+  opacity: 0.85;
+  margin-top: 0.15rem;
+  text-align: right;
+}
+
+.main-content {
+  padding: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.posts-container, .recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 2rem;
+}
+
+body {
+  font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+  background: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+h1, h2, h3 {
+  font-weight: 700;
+  margin-bottom: 0.5em;
+}
+
+p, .post-description, .notification-message {
+  color: var(--text-light);
+  font-size: 1rem;
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding: 1rem;
+  }
+  .posts-container, .recommendations-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
