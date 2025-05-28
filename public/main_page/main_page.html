@@ -157,8 +157,6 @@
     </div>
   </div>
 
-  <div class="notification-dropdown"></div>
-
   <script type="module" src="main_page.js"></script>
   <script>
     // Add notification dropdown
@@ -256,6 +254,8 @@
     // Listen for notifications when user is logged in
     onAuthStateChanged(auth, (user) => {
       if (user) {
+        listenForNotifications(user.uid);
+      }
         listenForNotifications(user.uid);
       }
     });

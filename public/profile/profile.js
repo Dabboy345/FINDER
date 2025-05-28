@@ -112,16 +112,26 @@ document.querySelector('.close-chat').addEventListener('click', () => {
   currentOtherUserEmail = null;
 });
 
-document.getElementById('sendChatMessage').addEventListener('click', async () => {
+document.getElementById('sendChatMessage').addEventListener('click', async (e) => {
+  e.preventDefault(); // Add this line to prevent any default behavior
   const input = document.getElementById('chatMessageInput');
-  await sendMessage(input.value);
-  input.value = '';
+  const text = input.value.trim();
+  if (text) {
+    await sendMessage(text);
+    input.value = ''; // Clear the input after sending
+    input.focus(); // Keep focus on input for continuous chatting
+  }
 });
 
 document.getElementById('chatMessageInput').addEventListener('keypress', async (e) => {
   if (e.key === 'Enter') {
-    await sendMessage(e.target.value);
-    e.target.value = '';
+    e.preventDefault();
+    const text = e.target.value.trim();
+    if (text) {
+      await sendMessage(text);
+      e.target.value = ''; // Clear the input after sending
+      e.target.focus(); // Keep focus on input
+    }
   }
 });
 

@@ -392,6 +392,7 @@ document.getElementById('sendClaimBtn').onclick = async function() {
   }
 };
 
+// Delete this entire block
 // Add notification dropdown
 const notificationContainer = document.querySelector('.notification-container');
 const notificationDropdown = document.createElement('div');
@@ -561,7 +562,7 @@ async function showNotificationDetail(notification) {
             }
             ${matchedWithPost.labels && matchedWithPost.labels.length ? 
               `<div class="post-labels">
-                ${matchedWithPost.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
+                ${matchedWithPost.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
               </div>` : 
               ''
             }
@@ -581,7 +582,7 @@ async function showNotificationDetail(notification) {
             }
             ${post.labels && post.labels.length ? 
               `<div class="post-labels">
-                ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
+                ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
               </div>` : 
               ''
             }
@@ -882,24 +883,27 @@ document.getElementById('closeChatModal').onclick = function() {
   currentChatPost = null;
 };
 
-document.getElementById('sendChatMessage').onclick = async function() {
+// Update the chat input handlers
+document.getElementById('sendChatMessage').addEventListener('click', async (e) => {
+  e.preventDefault();
   const input = document.getElementById('chatMessageInput');
-  const message = input.value.trim();
-  
-  if (message) {
-    await sendMessage(message);
-    input.value = '';
+  const text = input.value.trim();
+  if (text) {
+    await sendMessage(text);
+    input.value = ''; // Clear the input after sending
+    input.focus();    // Keep focus for continuous chatting
   }
-};
+});
 
-document.getElementById('chatMessageInput').addEventListener('keypress', async function(e) {
+document.getElementById('chatMessageInput').addEventListener('keydown', async (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    const message = this.value.trim();
-    
-    if (message) {
-      await sendMessage(message);
-      this.value = '';
+    const input = e.target;
+    const text = input.value.trim();
+    if (text) {
+      await sendMessage(text);
+      input.value = ''; // Clear the input after sending
+      input.focus();    // Keep focus for continuous chatting
     }
   }
 });
@@ -1444,304 +1448,6 @@ class AIRecommendationEngine {
     
     // Return value between 0 (dark) and 1 (bright)
     return 0.5 + (brightCount - darkCount) * 0.1;
-  }
-
-  // Enhanced color similarity calculation
-  calculateColorSimilarity(post1, post2) {
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedColors = [];
-    let score = 0;
-    
-    // Check for color variations and synonyms
-    for (const [baseColor, variations] of Object.entries(this.colorVariations)) {
-      const post1HasColor = variations.some(color => text1.includes(color));
-      const post2HasColor = variations.some(color => text2.includes(color));
-      
-      if (post1HasColor && post2HasColor) {
-        matchedColors.push(baseColor);
-        score += 0.2; // High score for exact color family match
-      }
-    }
-    
-    // Check for multi-color descriptions
-    const colorPattern = /(multi.*color|rainbow|colorful|various.*color)/i;
-    if (colorPattern.test(text1) && colorPattern.test(text2)) {
-      matchedColors.push('multicolor');
-      score += 0.15;
-    }
-    
-    return {
-      score: Math.min(score, 0.5), // Cap at 0.5 for color matching
-      matches: matchedColors
-    };
-  }
-
-  // Calculate size similarity
-  calculateSizeSimilarity(post1, post2) {
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedCategory = null;
-    let score = 0;
-    
-    for (const [sizeCategory, terms] of Object.entries(this.sizeTerms)) {
-      const post1HasSize = terms.some(term => text1.includes(term));
-      const post2HasSize = terms.some(term => text2.includes(term));
-      
-      if (post1HasSize && post2HasSize) {
-        matchedCategory = sizeCategory;
-        score = 0.15;
-        break;
-      }
-    }
-    
-    // Check for specific measurements (simplified)
-    const measurementPattern = /(\d+)\s*(cm|mm|inch|"|'|ft|meter|m)\b/gi;
-    const measurements1 = text1.match(measurementPattern) || [];
-    const measurements2 = text2.match(measurementPattern) || [];
-    
-    if (measurements1.length > 0 && measurements2.length > 0) {
-      score += 0.1;
-      matchedCategory = matchedCategory || 'measured';
-    }
-    
-    return {
-      score,
-      category: matchedCategory
-    };
-  }
-
-  // Calculate material similarity
-  calculateMaterialSimilarity(post1, post2) {
-    const materials = {
-      metal: ['metal', 'steel', 'aluminum', 'gold', 'silver', 'brass', 'copper', 'iron'],
-      plastic: ['plastic', 'polymer', 'acrylic', 'vinyl', 'pvc'],
-      fabric: ['cotton', 'wool', 'silk', 'polyester', 'nylon', 'denim', 'leather', 'suede'],
-      glass: ['glass', 'crystal', 'transparent', 'clear'],
-      wood: ['wood', 'wooden', 'timber', 'oak', 'pine', 'bamboo'],
-      rubber: ['rubber', 'silicone', 'elastic'],
-      paper: ['paper', 'cardboard', 'card']
-    };
-    
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedMaterials = [];
-    let score = 0;
-    
-    for (const [materialType, terms] of Object.entries(materials)) {
-      const post1HasMaterial = terms.some(term => text1.includes(term));
-      const post2HasMaterial = terms.some(term => text2.includes(term));
-      
-      if (post1HasMaterial && post2HasMaterial) {
-        matchedMaterials.push(materialType);
-        score += 0.1;
-      }
-    }
-    
-    return {
-      score: Math.min(score, 0.3), // Cap at 0.3 for material matching
-      materials: matchedMaterials
-    };
-  }
-
-  // Enhanced brand detection
-  calculateBrandSimilarity(post1, post2) {
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedBrands = [];
-    let score = 0;
-    
-    for (const brand of this.commonBrands) {
-      if (text1.includes(brand) && text2.includes(brand)) {
-        matchedBrands.push(brand);
-        score += 0.2; // High score for brand matches
-      }
-    }
-    
-    return {
-      score: Math.min(score, 0.4), // Cap at 0.4 for brand matching
-      brands: matchedBrands
-    };
-  }
-
-  // Calculate location proximity (simplified)
-  calculateLocationProximity(post1, post2) {
-    // In a real implementation, you'd use actual GPS coordinates
-    // For now, we'll use a simplified approach based on location text
-    if (post1.location && post2.location) {
-      const loc1 = post1.location.toLowerCase();
-      const loc2 = post2.location.toLowerCase();
-      
-      if (loc1 === loc2) return 1;
-      
-      // Check for common area terms
-      const areas1 = loc1.split(/[,\s]+/);
-      const areas2 = loc2.split(/[,\s]+/);
-      const commonAreas = areas1.filter(area => areas2.includes(area));
-      
-      return commonAreas.length > 0 ? 0.6 : 0.2;
-    }
-    return 0.5; // Default score when location is unknown
-  }
-
-  // Calculate temporal relevance
-  calculateTemporalRelevance(post1, post2) {
-    const now = Date.now();
-    const time1 = post1.timestamp || now;
-    const time2 = post2.timestamp || now;
-    
-    const timeDiff = Math.abs(time1 - time2);
-    const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
-    
-    // Items lost/found closer in time are more likely to be related
-    if (daysDiff <= 1) return 1;
-    if (daysDiff <= 7) return 0.8;
-    if (daysDiff <= 30) return 0.5;
-    return 0.2;
-  }
-
-  // Generate AI recommendations
-  async generateRecommendations(userPosts, allPosts) {
-    const recommendations = [];
-    
-    const otherPosts = Object.entries(allPosts)
-      .filter(([, post]) => post.user?.uid !== currentUser.uid && !post.claimed)
-      .map(([id, post]) => ({ id, ...post }));
-
-    for (const userPost of userPosts) {
-      const userType = userPost.type?.toLowerCase();
-      if (userType !== "lost" && userType !== "found") continue;
-
-      for (const otherPost of otherPosts) {
-        const otherType = otherPost.type?.toLowerCase();
-        if (!otherType || userType === otherType) continue;
-
-        const recommendation = this.calculateRecommendationScore(userPost, otherPost);
-        
-        if (recommendation.totalScore > 0.3) { // Threshold for showing recommendations
-          recommendations.push({
-            userPost,
-            matchedPost: otherPost,
-            ...recommendation
-          });
-        }
-      }
-    }
-
-    // Sort by total score and return top recommendations
-    return recommendations
-      .sort((a, b) => b.totalScore - a.totalScore)
-      .slice(0, 20); // Limit to top 20 recommendations
-  }
-
-  // Enhanced comprehensive recommendation score calculation
-  calculateRecommendationScore(userPost, otherPost) {
-    const scores = {};
-    const detailedAnalysis = {};
-    
-    // Combine title, description, and labels for text analysis
-    const userText = [userPost.title, userPost.description, ...(userPost.labels || [])].join(' ');
-    const otherText = [otherPost.title, otherPost.description, ...(otherPost.labels || [])].join(' ');
-    
-    // Calculate individual scores with detailed analysis
-    scores.semantic = this.calculateSemanticSimilarity(userText, otherText);
-    
-    // Enhanced visual analysis
-    const visualAnalysis = this.calculateVisualSimilarity(userPost, otherPost);
-    scores.visual = visualAnalysis.score;
-    detailedAnalysis.visual = visualAnalysis;
-    
-    // Color matching
-    const colorAnalysis = this.calculateColorSimilarity(userPost, otherPost);
-    scores.color = colorAnalysis.score;
-    detailedAnalysis.colors = colorAnalysis.matches;
-    
-    // Size matching
-    const sizeAnalysis = this.calculateSizeSimilarity(userPost, otherPost);
-    scores.size = sizeAnalysis.score;
-    detailedAnalysis.size = sizeAnalysis.category;
-    
-    // Material matching
-    const materialAnalysis = this.calculateMaterialSimilarity(userPost, otherPost);
-    scores.material = materialAnalysis.score;
-    detailedAnalysis.materials = materialAnalysis.materials;
-    
-    // Brand matching
-    const brandAnalysis = this.calculateBrandSimilarity(userPost, otherPost);
-    scores.brand = brandAnalysis.score;
-    detailedAnalysis.brands = brandAnalysis.brands;
-    
-    // Location and temporal (existing logic)
-    scores.location = this.calculateLocationProximity(userPost, otherPost);
-    scores.temporal = this.calculateTemporalRelevance(userPost, otherPost);
-    
-    // Label exact matches (existing logic)
-    const userLabels = (userPost.labels || []).map(l => l.toLowerCase());
-    const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
-    const sharedLabels = userLabels.filter(l => l !== "lost" && l !== "found" && otherLabels.includes(l));
-    scores.exactMatch = sharedLabels.length > 0 ? 1 : 0;
-    
-    // Calculate weighted total score with enhanced weights
-    const totalScore = (
-      scores.exactMatch * this.weightings.exactMatch +
-      scores.semantic * this.weightings.semanticSimilarity +
-      scores.visual * this.weightings.visualSimilarity +
-      scores.color * this.weightings.colorMatch +
-      scores.size * this.weightings.sizeMatch +
-      scores.material * this.weightings.descriptionMatch +
-      scores.brand * this.weightings.brandMatch +
-      scores.location * this.weightings.locationProximity +
-      scores.temporal * this.weightings.temporalRelevance
-    ) / Object.values(this.weightings).reduce((a, b) => a + b, 0);
-
-    // Enhanced match category determination
-    let matchCategory = 'low';
-    let confidence = totalScore * 100;
-    
-    if (scores.exactMatch > 0 && (scores.visual > 0.5 || scores.semantic > 0.7)) {
-      matchCategory = 'high';
-      confidence = Math.min(confidence + 15, 95);
-    } else if (scores.exactMatch > 0 || scores.semantic > 0.6 || (scores.visual > 0.4 && scores.color > 0.2)) {
-      matchCategory = 'high';
-      confidence = Math.min(confidence + 10, 90);
-    } else if (scores.semantic > 0.4 || scores.visual > 0.6 || (scores.color > 0.2 && scores.size)) {
-      matchCategory = 'medium';
-      confidence = Math.min(confidence + 5, 85);
-    } else if (scores.visual > 0.3 || scores.color > 0.15) {
-      matchCategory = 'visual';
-    }
-
-    // Enhanced matching factors identification
-    const matchingFactors = [];
-    if (sharedLabels.length > 0) matchingFactors.push(...sharedLabels);
-    if (scores.semantic > 0.3) matchingFactors.push('Similar Description');
-    if (scores.visual > 0.4) matchingFactors.push('Visual Similarity');
-    if (detailedAnalysis.colors && detailedAnalysis.colors.length > 0) {
-      matchingFactors.push(`Color: ${detailedAnalysis.colors.join(', ')}`);
-    }
-    if (detailedAnalysis.size) matchingFactors.push(`Size: ${detailedAnalysis.size}`);
-    if (detailedAnalysis.materials && detailedAnalysis.materials.length > 0) {
-      matchingFactors.push(`Material: ${detailedAnalysis.materials.join(', ')}`);
-    }
-    if (detailedAnalysis.brands && detailedAnalysis.brands.length > 0) {
-      matchingFactors.push(`Brand: ${detailedAnalysis.brands.join(', ')}`);
-    }
-    if (scores.location > 0.6) matchingFactors.push('Same Area');
-    if (scores.temporal > 0.8) matchingFactors.push('Recent Timeline');
-
-    return {
-      totalScore,
-      scores,
-      matchCategory,
-      sharedLabels,
-      matchingFactors,
-      confidence: Math.min(confidence, 95),
-      detailedAnalysis
-    };
   }
 
   // Enhanced color similarity calculation
