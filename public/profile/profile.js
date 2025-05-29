@@ -230,6 +230,11 @@ function updatePostsDisplay(posts) {
                 Chat with ${currentUser.uid === post.user.uid ? 'the claimer' : 'the owner'}
               </button>
             ` : ''}
+            ${(currentUser && post.claimedBy && currentUser.uid === post.claimedBy.uid) ? `
+              <button class="unclaim-btn" onclick="unclaimPost('${post.id}')">
+                <i class='fas fa-undo'></i> Unclaim
+              </button>
+            ` : ''}
           </div>
         ` : `
           <div class="claim-status unclaimed">
@@ -432,3 +437,20 @@ onAuthStateChanged(auth, (user) => {
 
 // Make openChat function globally available
 window.openChat = openChat;
+
+// Add unclaimPost function globally
+window.unclaimPost = async function(postId) {
+  if (!currentUser) return;
+  try {
+    const postRef = ref(db, 'posts/' + postId);
+    await update(postRef, {
+      claimed: false,
+      claimedBy: null
+    });
+    // Optionally, remove claim from 'claims' node if you want
+    // Reload posts to reflect change
+    loadUserPosts(currentUser);
+  } catch (error) {
+    alert('Failed to unclaim the post.');
+  }
+};
