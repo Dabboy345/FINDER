@@ -154,13 +154,14 @@ onValue(postsRef, async (snapshot) => {
           <i class="fas fa-check-circle"></i>
           <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
           ${currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid) ? `
-            <button class="chat-btn" onclick="event.stopPropagation();openChat('${postId}', '${
-              currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid
-            }', '${
-              currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email
-            }')">
+            <button class="chat-btn" onclick="event.stopPropagation();openChat('${postId}', '${currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid}', '${currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email}')">
               <i class="fas fa-comments"></i>
               Chat
+            </button>
+          ` : ''}
+          ${(currentUser && post.claimedBy && currentUser.uid === post.claimedBy.uid) ? `
+            <button class="unclaim-btn" onclick="event.stopPropagation();unclaimPost('${postId}')">
+              <i class='fas fa-undo'></i> Unclaim
             </button>
           ` : ''}
         </div>
@@ -176,6 +177,9 @@ onValue(postsRef, async (snapshot) => {
           <button class="chat-btn" onclick="event.stopPropagation();openChat('${postId}', '${post.user.uid}', '${post.user.email}')">
             <i class="fas fa-comments"></i>
             Chat
+          </button>
+          <button class="unclaim-btn" onclick="event.stopPropagation();unclaimPost('${postId}')">
+            <i class='fas fa-undo'></i> Unclaim
           </button>
         </div>
       ` : `
@@ -1827,3 +1831,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Store recommendations globally for filtering
 window.currentRecommendations = [];
+
+// Add unclaimPost function globally
+window.unclaimPost = async function(postId) {
+  if (!currentUser) return;
+  try {
+    const postRef = ref(db, 'posts/' + postId);
+    await update(postRef, {
+      claimed: false,
+      claimedBy: null
+    });
+    // Optionally, remove claim from 'claims' node if you want
+    // Reload posts to reflect change
+    window.location.reload();
+  } catch (error) {
+    alert('Failed to unclaim the post.');
+  }
+};
