@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 import { getDatabase, ref, push, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { analyzeSimilarity } from './openai-service.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
@@ -109,7 +110,7 @@ postForm.addEventListener('submit', async (e) => {
       title,
       description,
       labels,
-      imageData: imageUrl, // Store the URL instead of base64
+      imageData: imageUrl,
       type: postType,
       timestamp: Date.now(),
       user: {
@@ -119,44 +120,42 @@ postForm.addEventListener('submit', async (e) => {
       claimed: false
     };
 
-    // Save to Firebase and get the new post reference
+    // Save to Firebase
     const newPostRef = await push(ref(db, 'posts'), post);
 
-    // --- AUTOMATIC MATCHING FUNCTIONALITY ---
-    // Try to find a matching post of the opposite type
+    // Find matches
     const postsSnapshot = await get(ref(db, 'posts'));
     const postsData = postsSnapshot.val();
+    
     if (postsData) {
       for (const [otherPostId, otherPost] of Object.entries(postsData)) {
-        if (otherPostId === newPostRef.key) continue; // skip self
-        if (!otherPost.labels) continue;
-        const otherLabels = otherPost.labels.map(l => l.toLowerCase());
-        const otherType = otherPost.type?.toLowerCase();
-        // Only match lost <-> found
-        if ((postType === "lost" && otherType === "found") || (postType === "found" && otherType === "lost")) {
-          // Find shared labels (excluding "lost"/"found")
-          const shared = labels
-            .filter(l => l !== "lost" && l !== "found" && otherLabels.includes(l));
-          if (shared.length > 0) {
-            // Notify the other user
-            if (otherPost.user && otherPost.user.uid) {
-              await push(ref(db, 'notifications'), {
-                to: otherPost.user.uid,
-                title: 'Potential Match Found!',
-                message: `We found a matching "${postType}" post: "${title}" with labels: ${shared.join(", ")}`,
-                type: 'match',
-                postId: newPostRef.key,
-                timestamp: Date.now(),
-                read: false
-              });
-            }
-            // Only notify for the first match found
-            break;
+        // Skip invalid comparisons
+        if (otherPostId === newPostRef.key || !otherPost.labels || 
+            otherPost.type === post.type) continue;
+
+        try {
+          // Use AI to analyze similarity
+          const similarity = await analyzeSimilarity(post, otherPost);
+          
+          if (similarity.overallScore > 0.7) {
+            // Create notification for match
+            await push(ref(db, 'notifications'), {
+              to: otherPost.user.uid,
+              title: 'AI Found a Potential Match!',
+              message: `Match confidence: ${Math.round(similarity.overallScore * 100)}%\nFor your ${otherPost.type} post: "${otherPost.title}"`,
+              type: 'ai_match',
+              postId: newPostRef.key,
+              matchedWithId: otherPostId,
+              matchConfidence: similarity.overallScore,
+              timestamp: Date.now(),
+              read: false
+            });
           }
+        } catch (error) {
+          console.error('Error analyzing match:', error);
         }
       }
     }
-    // --- END MATCHING FUNCTIONALITY ---
 
     // Redirect to main page
     window.location.href = 'main_page.html';

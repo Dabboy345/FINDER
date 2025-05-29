@@ -40,42 +40,17 @@
     </div>
 
     <!-- AI Recommendations Section -->
-    <div id="aiRecommendationsSection" class="ai-recommendations-section" style="display: none;">
-      <div class="ai-header">
-        <div class="ai-title">
-          <i class="fas fa-brain ai-icon"></i>
-          <h2>AI-Powered Recommendations</h2>
-        </div>
-        <p class="ai-subtitle">Intelligent suggestions based on advanced matching algorithms</p>
+    <section id="aiRecommendationsSection" class="ai-recommendations-section" style="display: none;">
+      <div class="recommendation-filters">
+        <button class="filter-btn active" data-filter="all">All Matches</button>
+        <button class="filter-btn" data-filter="high">High Match</button>
+        <button class="filter-btn" data-filter="medium">Medium Match</button>
+        <button class="filter-btn" data-filter="visual">Visual Match</button>
       </div>
-      
-      <div class="recommendations-container">
-        <div class="recommendation-filters">
-          <button class="filter-btn active" data-filter="all">All Recommendations</button>
-          <button class="filter-btn" data-filter="high">High Match</button>
-          <button class="filter-btn" data-filter="medium">Medium Match</button>
-          <button class="filter-btn" data-filter="visual">Visual Similarity</button>
-        </div>
-        
-        <div id="recommendationsGrid" class="recommendations-grid">
-          <!-- AI recommendations will be populated here -->
-        </div>
-        
-        <div class="ai-insights">
-          <h3><i class="fas fa-lightbulb"></i> AI Insights</h3>
-          <div id="aiInsightsContent">
-            <p>The AI analyzes multiple factors to find the best matches:</p>
-            <ul>
-              <li><i class="fas fa-tag"></i> Tag similarity and semantic meaning</li>
-              <li><i class="fas fa-font"></i> Text description analysis</li>
-              <li><i class="fas fa-image"></i> Visual characteristics comparison</li>
-              <li><i class="fas fa-map-marker-alt"></i> Location proximity</li>
-              <li><i class="fas fa-clock"></i> Temporal relevance</li>
-            </ul>
-          </div>
-        </div>
+      <div id="recommendationsGrid" class="recommendations-grid">
+        <!-- AI recommendations will be populated here -->
       </div>
-    </div>
+    </section>
 
     <div class="posts-container">
       <!-- Posts will be loaded here dynamically -->
@@ -159,106 +134,13 @@
     </div>
   </div>
 
+  <div id="notificationDetailModal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="closeNotificationDetail">&times;</span>
+      <div id="notificationDetailBody"></div>
+    </div>
+  </div>
+
   <script type="module" src="main_page.js"></script>
-  <script>
-    // Add notification dropdown
-    const notificationContainer = document.querySelector('.notification-container');
-    const notificationDropdown = document.createElement('div');
-    notificationDropdown.className = 'notification-dropdown';
-    notificationContainer.appendChild(notificationDropdown);
-
-    let unreadNotifications = 0;
-
-    // Function to update notification badge
-    function updateNotificationBadge(count) {
-      const badge = document.getElementById('notificationBadge');
-      if (count > 0) {
-        badge.style.display = 'block';
-        badge.textContent = count;
-      } else {
-        badge.style.display = 'none';
-      }
-    }
-
-    // Listen for notifications
-    function listenForNotifications(userId) {
-      const notificationsRef = ref(db, 'notifications');
-      onValue(notificationsRef, (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        unreadNotifications = Object.values(data)
-          .filter(n => n.to === userId && !n.read)
-          .length;
-        
-        updateNotificationBadge(unreadNotifications);
-      });
-    }
-
-    // Load notifications
-    async function loadNotifications() {
-      if (!currentUser) return;
-
-      const notificationsRef = ref(db, 'notifications');
-      const snapshot = await get(notificationsRef);
-      const data = snapshot.val();
-      
-      if (!data) {
-        notificationDropdown.innerHTML = '<div class="notification-item">No notifications</div>';
-        return;
-      }
-
-      const notifications = Object.entries(data)
-        .filter(([, n]) => n.to === currentUser.uid)
-        .sort(([, a], [, b]) => (b.lastUpdated || b.timestamp || 0) - (a.lastUpdated || a.timestamp || 0));
-
-      notificationDropdown.innerHTML = notifications.map(([id, notification]) => {
-        const timeString = new Date(notification.lastUpdated || notification.timestamp).toLocaleString();
-        return `
-          <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
-            <div class="notification-title">
-              <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
-              ${notification.title}
-            </div>
-            <div class="notification-message">
-              ${notification.message}
-            </div>
-            <div class="notification-time">${timeString}</div>
-          </div>
-        `;
-      }).join('');
-
-      // Add click handler for notification items
-      notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
-        item.addEventListener('click', () => {
-          const notificationId = item.dataset.id;
-          // You can redirect or show details here, e.g.:
-          // window.location.href = `post-details.html?id=${notification.postId}`;
-        });
-      });
-    }
-
-    // Toggle notification dropdown
-    notificationContainer.addEventListener('click', () => {
-      notificationDropdown.classList.toggle('show');
-      if (notificationDropdown.classList.contains('show')) {
-        loadNotifications();
-      }
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!notificationContainer.contains(e.target)) {
-        notificationDropdown.classList.remove('show');
-      }
-    });
-
-    // Listen for notifications when user is logged in
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        listenForNotifications(user.uid);
-      }
-    });
-  </script>
 </body>
 </html>

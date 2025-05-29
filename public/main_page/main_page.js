@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getDatabase, ref, onValue, update, push, get, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { getStorage, ref as storageRef, deleteObject } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-storage.js";
+import { getDatabase, ref, get, set, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { analyzeSimilarity } from './openai-service.js';
 
 // Firebase config
 const firebaseConfig = {
@@ -18,126 +18,70 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-const storage = getStorage(app);
 
+// Global variables
 const postsContainer = document.querySelector(".posts-container");
 let currentUser = null;
+let postsMap = {};
 
-// Listen for auth state changes
+// Initialize auth state listener
 onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    window.location.href = '../index.html';
+    return;
+  }
   currentUser = user;
+  listenForNotifications(user.uid);
+  loadPosts();
 });
 
-// Function to handle claim
-async function handleClaim(postId, post) {
-  if (!currentUser) {
-    alert("Please log in to claim an item.");
-    return;
-  }
-
-  if (post.claimed) {
-    alert("This item has already been claimed.");
-    return;
-  }
-
-  if (post.user.uid === currentUser.uid) {
-    alert("You cannot claim your own post.");
-    return;
-  }
-
-  try {
-    const postRef = ref(db, `posts/${postId}`);
-    await update(postRef, {
-      claimed: true,
-      claimedBy: {
-        uid: currentUser.uid,
-        email: currentUser.email,
-        timestamp: Date.now()
-      }
-    });
-    alert("Item claimed successfully!");
-  } catch (error) {
-    console.error("Error claiming item:", error);
-    alert("Error claiming item. Please try again.");
-  }
-}
-
-// Function to handle unclaim
-async function unclaimPost(postId) {
-  if (!currentUser) {
-    alert("Please log in to unclaim an item.");
-    return;
-  }
-
-  const post = postsMap[postId];
-  if (!post) {
-    alert("Post not found.");
-    return;
-  }
-
-  // Only the user who claimed the post can unclaim it
-  if (!post.claimedBy || post.claimedBy.uid !== currentUser.uid) {
-    alert("You can only unclaim posts you have claimed.");
-    return;
-  }
-
-  try {
-    const postRef = ref(db, `posts/${postId}`);
-    await update(postRef, {
-      claimed: false,
-      claimedBy: null
-    });
-    alert("You have unclaimed this item.");
-  } catch (error) {
-    console.error("Error unclaiming item:", error);
-    alert("Error unclaiming item. Please try again.");
-  }
-}
-
-const postsMap = {};
-const postsRef = ref(db, "posts");
-onValue(postsRef, async (snapshot) => {
-  const data = snapshot.val();
-  if (!data) {
-    postsContainer.innerHTML = "<p>No posts found.</p>";
-    return;
-  }
-
-  // Convert data to array of [postId, post] pairs
-  const posts = Object.entries(data)
-    .filter(([postId, post]) => post && typeof post === "object")
-    .sort(([, a], [, b]) => (b.timestamp || 0) - (a.timestamp || 0));
-
-  // Store posts in postsMap
-  Object.keys(postsMap).forEach(key => delete postsMap[key]);
-  for (const [postId, post] of posts) {
-    postsMap[postId] = post;
-  }
-
-  // Get all claims for the current user
-  let userClaims = {};
-  if (currentUser) {
-    try {
-      const claimsRef = ref(db, 'claims');
-      const claimsSnapshot = await get(claimsRef);
-      const claims = claimsSnapshot.val();
-      if (claims) {
-        userClaims = Object.values(claims).reduce((acc, claim) => {
-          if (claim.from && claim.from.uid === currentUser.uid) {
-            acc[claim.postId] = true;
-          }
-          return acc;
-        }, {});
-      }
-    } catch (e) {
-      userClaims = {};
+// Load posts function
+async function loadPosts() {
+  const postsRef = ref(db, "posts");
+  onValue(postsRef, async (snapshot) => {
+    const data = snapshot.val();
+    if (!data) {
+      postsContainer.innerHTML = "<p>No posts found.</p>";
+      return;
     }
-  }
 
-  // Render posts
+    // Convert data to array and sort by timestamp
+    const posts = Object.entries(data)
+      .filter(([, post]) => post && typeof post === "object")
+      .sort(([, a], [, b]) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // Update postsMap
+    postsMap = Object.fromEntries(posts);
+
+    // Get user claims
+    let userClaims = {};
+    if (currentUser) {
+      try {
+        const claimsSnapshot = await get(ref(db, 'claims'));
+        const claims = claimsSnapshot.val();
+        if (claims) {
+          userClaims = Object.values(claims).reduce((acc, claim) => {
+            if (claim.from && claim.from.uid === currentUser.uid) {
+              acc[claim.postId] = true;
+            }
+            return acc;
+          }, {});
+        }
+      } catch (e) {
+        console.error('Error loading claims:', e);
+      }
+    }
+
+    // Render posts
+    renderPosts(posts, userClaims);
+  });
+}
+
+// Add this helper function for rendering posts
+function renderPosts(posts, userClaims) {
   postsContainer.innerHTML = posts.map(([postId, post]) => `
     <div class="post ${post.claimed ? 'claimed' : ''} ${currentUser && post.user && currentUser.uid === post.user.uid ? 'own-post' : ''}" 
-         data-post-id="${postId}" style="cursor:pointer;">
+         data-post-id="${postId}">
       <div class="post-header">
         <h3>${escapeHtml(post.title)}</h3>
         ${currentUser && post.user && currentUser.uid === post.user.uid ? `
@@ -223,42 +167,88 @@ onValue(postsRef, async (snapshot) => {
     </div>
   `).join("");
 
-  // Add click event to all posts for redirection
+  // Add click handlers for posts
+  addPostClickHandlers();
+}
+
+// Add click handlers for posts
+function addPostClickHandlers() {
   document.querySelectorAll('.post[data-post-id]').forEach(postDiv => {
-    postDiv.addEventListener('click', function() {
+    postDiv.addEventListener('click', function(e) {
+      // Ignore clicks on buttons
+      if (e.target.closest('button')) return;
+      
       const postId = this.getAttribute('data-post-id');
       window.location.href = `post-details.html?id=${encodeURIComponent(postId)}`;
     });
   });
-
-  // Trigger auto-suggestions after posts are loaded (if user is logged in)
-  if (currentUser) {
-    // Get user's posts
-    const myPosts = Object.entries(data)
-      .filter(([, post]) => post.user?.uid === currentUser.uid)
-      .map(([id, post]) => ({ id, ...post }));
-    
-    // Check for auto-suggestions after a short delay to let user browse
-    if (myPosts.length > 0) {
-      setTimeout(() => {
-        checkForMatchSuggestions(myPosts, data);
-      }, 5000); // Show suggestions after 5 seconds of browsing
-    }
-  }
-}, (error) => {
-  console.error("Error loading posts:", error);
-  postsContainer.innerHTML = "<p>Error loading posts.</p>";
-});
-
-function escapeHtml(text) {
-  if (!text) return "";
-  return text.replace(/[&<>"']/g, m => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  })[m]);
 }
 
-// Make handleClaim available globally
-window.handleClaim = handleClaim;
+// Function to handle claim
+async function handleClaim(postId, post) {
+  if (!currentUser) {
+    alert("Please log in to claim an item.");
+    return;
+  }
+
+  if (post.claimed) {
+    alert("This item has already been claimed.");
+    return;
+  }
+
+  if (post.user.uid === currentUser.uid) {
+    alert("You cannot claim your own post.");
+    return;
+  }
+
+  try {
+    const postRef = ref(db, `posts/${postId}`);
+    await update(postRef, {
+      claimed: true,
+      claimedBy: {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        timestamp: Date.now()
+      }
+    });
+    alert("Item claimed successfully!");
+  } catch (error) {
+    console.error("Error claiming item:", error);
+    alert("Error claiming item. Please try again.");
+  }
+}
+
+// Function to handle unclaim
+async function unclaimPost(postId) {
+  if (!currentUser) {
+    alert("Please log in to unclaim an item.");
+    return;
+  }
+
+  const post = postsMap[postId];
+  if (!post) {
+    alert("Post not found.");
+    return;
+  }
+
+  // Only the user who claimed the post can unclaim it
+  if (!post.claimedBy || post.claimedBy.uid !== currentUser.uid) {
+    alert("You can only unclaim posts you have claimed.");
+    return;
+  }
+
+  try {
+    const postRef = ref(db, `posts/${postId}`);
+    await update(postRef, {
+      claimed: false,
+      claimedBy: null
+    });
+    alert("You have unclaimed this item.");
+  } catch (error) {
+    console.error("Error unclaiming item:", error);
+    alert("Error unclaiming item. Please try again.");
+  }
+}
 
 // Modal logic
 let currentClaimPostId = null;
@@ -499,45 +489,51 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// Update notification detail modal to the DOM
-const notificationDetailModal = document.createElement('div');
-notificationDetailModal.id = 'notificationDetailModal';
-notificationDetailModal.className = 'modal';
-notificationDetailModal.style.display = 'none';
-notificationDetailModal.innerHTML = `
-  <div class="modal-content" id="notificationDetailContent">
-    <div class="modal-header">
-      <span class="close" id="closeNotificationDetail">&times;</span>
-      <button class="delete-notification-btn" id="deleteNotificationBtn">
-        <i class="fas fa-trash"></i> Delete
-      </button>
-    </div>
-    <div id="notificationDetailBody"></div>
-  </div>
-`;
-document.body.appendChild(notificationDetailModal);
-
-document.getElementById('closeNotificationDetail').onclick = function() {
+// Remove any code that creates/appends the notificationDetailModal in JS if it is already in the HTML
+// Only select and control the modal if it exists in the DOM
+const notificationDetailModal = document.getElementById('notificationDetailModal');
+if (notificationDetailModal) {
   notificationDetailModal.style.display = 'none';
-};
+  document.addEventListener('DOMContentLoaded', () => {
+    notificationDetailModal.style.display = 'none';
+  });
+  const closeBtn = document.getElementById('closeNotificationDetail');
+  if (closeBtn) {
+    closeBtn.onclick = function() {
+      notificationDetailModal.style.display = 'none';
+    };
+  }
+}
 
 // Add delete notification functionality
-document.getElementById('deleteNotificationBtn').onclick = async function() {
-  const notificationId = this.dataset.notificationId;
-  if (!notificationId) return;
+// Add a null check for deleteNotificationBtn to prevent errors if the element does not exist
+const deleteNotificationBtn = document.getElementById('deleteNotificationBtn');
+if (deleteNotificationBtn) {
+  deleteNotificationBtn.onclick = async function() {
+    const notificationId = this.dataset.notificationId;
+    if (!notificationId) return;
 
-  if (confirm('Are you sure you want to delete this notification?')) {
-    try {
-      const notificationRef = ref(db, `notifications/${notificationId}`);
-      await set(notificationRef, null);
-      notificationDetailModal.style.display = 'none';
-      loadNotifications(); // Refresh notifications list
-    } catch (error) {
-      console.error('Error deleting notification:', error);
-      alert('Error deleting notification. Please try again.');
+    if (confirm('Are you sure you want to delete this notification?')) {
+      try {
+        const notificationRef = ref(db, `notifications/${notificationId}`);
+        await set(notificationRef, null);
+        notificationDetailModal.style.display = 'none';
+        loadNotifications(); // Refresh notifications list
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        alert('Error deleting notification. Please try again.');
+      }
     }
+  };
+}
+
+// Update notification detail modal to the DOM
+document.addEventListener('DOMContentLoaded', () => {
+  const notificationDetailModal = document.getElementById('notificationDetailModal');
+  if (notificationDetailModal) {
+    notificationDetailModal.style.display = 'none';
   }
-};
+});
 
 // Update notification click handler to show details
 async function showNotificationDetail(notification) {
@@ -653,7 +649,6 @@ async function showNotificationDetail(notification) {
   }
 
   document.getElementById('notificationDetailBody').innerHTML = html;
-  notificationDetailModal.style.display = 'flex';
 }
 
 // Helper function to format dates consistently
@@ -768,7 +763,7 @@ window.handleEditPost = async function(postId) {
 
 window.handleDeletePost = async function(postId) {
   const post = postsMap[postId];
-  if (!currentUser || !post.user || post.user.uid !== currentUser.uid) {
+  if (!currentUser || post.user.uid !== currentUser.uid) {
     alert("You can only delete your own posts.");
     return;
   }
@@ -1738,28 +1733,22 @@ async function showAIRecommendations() {
   const section = document.getElementById('aiRecommendationsSection');
   const grid = document.getElementById('recommendationsGrid');
   
-  // Show section and loading state
-  section.style.display = 'block';
-  grid.innerHTML = `
-    <div class="loading-recommendations">
-      <div class="loading-spinner"></div>
-      <p>AI is analyzing posts and generating recommendations...</p>
-    </div>
-  `;
-
   try {
-    // Get all posts
+    // Show loading state
+    section.style.display = 'block';
+    grid.innerHTML = `
+      <div class="loading-recommendations">
+        <div class="loading-spinner"></div>
+        <p>AI is analyzing posts...</p>
+      </div>
+    `;
+
+    // Get posts data
     const postsSnapshot = await get(ref(db, 'posts'));
     const postsData = postsSnapshot.val();
     
     if (!postsData) {
-      grid.innerHTML = `
-        <div class="no-recommendations">
-          <i class="fas fa-search"></i>
-          <h3>No posts available</h3>
-          <p>There are no posts to analyze for recommendations.</p>
-        </div>
-      `;
+      grid.innerHTML = '<div class="no-recommendations">No posts available.</div>';
       return;
     }
 
@@ -1769,48 +1758,101 @@ async function showAIRecommendations() {
       .map(([id, post]) => ({ id, ...post }));
 
     if (userPosts.length === 0) {
-      grid.innerHTML = `
-        <div class="no-recommendations">
-          <i class="fas fa-plus-circle"></i>
-          <h3>Create a post first</h3>
-          <p>You need to create a post before we can generate AI recommendations.</p>
-          <button onclick="window.location.href='post-creation.html'" class="btn" style="margin-top: 1rem;">
-            <i class="fas fa-plus"></i> Create Post
-          </button>
-        </div>
-      `;
+      grid.innerHTML = '<div class="no-recommendations">Create a post first to get recommendations.</div>';
       return;
     }
 
-    // Generate AI recommendations
-    const recommendations = await aiEngine.generateRecommendations(userPosts, postsData);
-    
-    if (recommendations.length === 0) {
-      grid.innerHTML = `
-        <div class="no-recommendations">
-          <i class="fas fa-robot"></i>
-          <h3>No matches found</h3>
-          <p>AI couldn't find any potential matches at the moment. Check back later as new posts are added!</p>
-        </div>
-      `;
+    // Check per-user and global quota before running recommendations
+    if (userAIUsageCount() >= AI_USER_LIMIT_PER_HOUR) {
+      grid.innerHTML = '<div class="no-recommendations">You have reached your hourly AI usage limit. Please try again later.</div>';
+      // Instead of blocking the UI, just show the message in the recommendations section and allow the rest of the app to work
+      section.style.display = 'block';
+      return;
+    }
+    const globalUsage = await getGlobalAIUsage();
+    if (globalUsage >= AI_GLOBAL_DAILY_LIMIT) {
+      grid.innerHTML = '<div class="no-recommendations">The daily AI usage limit for this app has been reached. Please try again tomorrow.</div>';
+      section.style.display = 'block';
       return;
     }
 
-    // Render recommendations
-    renderRecommendations(recommendations);
-    
-    // Update AI insights
-    updateAIInsights(recommendations);
-    
+    // Generate and display recommendations using real OpenAI API for each pair
+    let recommendations = [];
+    let openAICalled = false;
+    let rateLimitError = false;
+    let apiErrorMessage = '';
+    try {
+      const allPosts = Object.entries(postsData)
+        .map(([id, post]) => ({ id, ...post }))
+        .filter(post => post.user && post.user.uid);
+      for (const userPost of userPosts) {
+        for (const otherPost of allPosts) {
+          if (userPost.id === otherPost.id) continue; // Skip self
+          if (userPost.user.uid === otherPost.user.uid) continue; // Skip own posts
+          if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue; // Only match lost <-> found
+          try {
+            // Call OpenAI API for similarity
+            const similarity = await analyzeSimilarity(userPost, otherPost);
+            openAICalled = true;
+            // Handle OpenAI error objects from compareTexts/compareImages
+            if (similarity && (similarity.textSimilarity?.error || similarity.imageSimilarity?.error)) {
+              // If rate limited, set flag and break out of loops
+              if (
+                similarity.textSimilarity?.error === 'rate_limited' ||
+                similarity.imageSimilarity?.error === 'rate_limited'
+              ) {
+                rateLimitError = true;
+                apiErrorMessage = similarity.textSimilarity?.message || similarity.imageSimilarity?.message;
+                break;
+              }
+              // For other errors, skip this pair but continue
+              continue;
+            }
+            // Use the OpenAI similarity score as the main confidence
+            if (similarity && similarity.overallScore > 0.3) {
+              recommendations.push({
+                userPost,
+                matchedPost: otherPost,
+                totalScore: similarity.overallScore * 100,
+                matchCategory: similarity.overallScore > 0.7 ? 'high' : (similarity.overallScore > 0.5 ? 'medium' : 'visual'),
+                matchingFactors: [
+                  `Text similarity: ${Math.round(similarity.textSimilarity * 100)}%`,
+                  `Image similarity: ${Math.round(similarity.imageSimilarity.similarity_score * 100)}%`
+                ],
+                confidence: Math.round(similarity.overallScore * 100),
+                feedback: similarity.imageSimilarity.explanation || 'AI similarity analysis complete.'
+              });
+            }
+          } catch (apiError) {
+            // If OpenAI fails for a pair, skip it but continue
+            console.error('OpenAI API error for post pair:', apiError);
+          }
+        }
+        if (rateLimitError) break;
+      }
+      if (rateLimitError) {
+        grid.innerHTML = `<div class="no-recommendations">${apiErrorMessage || 'You have hit the OpenAI API rate limit. Please wait a minute and try again.'}</div>`;
+        section.style.display = 'block';
+      } else {
+        grid.innerHTML = openAICalled
+          ? '<div class="success-recommendations">AI connection successful! Recommendations loaded below.</div>'
+          : '<div class="no-recommendations">No AI recommendations found. Try creating or updating your posts for better matches!</div>';
+      }
+    } catch (apiError) {
+      console.error('AI API error:', apiError);
+      grid.innerHTML = '<div class="no-recommendations">Unable to connect to the AI recommendation service. Please try again later.</div>';
+      return;
+    }
+    window.currentRecommendations = recommendations;
+    // Append recommendations below the success message
+    if (!rateLimitError) {
+      grid.innerHTML += recommendations.length > 0
+        ? recommendations.map(rec => createRecommendationCard(rec)).join('')
+        : '<div class="no-recommendations">No AI recommendations found. Try creating or updating your posts for better matches!</div>';
+    }
   } catch (error) {
-    console.error('Error generating AI recommendations:', error);
-    grid.innerHTML = `
-      <div class="no-recommendations">
-        <i class="fas fa-exclamation-triangle"></i>
-        <h3>Error generating recommendations</h3>
-        <p>Something went wrong. Please try again later.</p>
-      </div>
-    `;
+    console.error('Error in AI recommendations:', error);
+    grid.innerHTML = '<div class="no-recommendations">Error loading recommendations. Please check your internet connection or try again later.</div>';
   }
 }
 
@@ -1927,6 +1969,18 @@ function updateAIInsights(recommendations) {
   `;
 }
 
+// Update: Show a message if no AI recommendations are found
+function renderAIRecommendations(recommendations) {
+  const recommendationsGrid = document.getElementById('recommendationsGrid');
+  recommendationsGrid.innerHTML = '';
+  if (!recommendations || recommendations.length === 0) {
+    recommendationsGrid.innerHTML = '<div class="no-recommendations">No AI recommendations found. Try creating or updating your posts for better matches!</div>';
+    return;
+  }
+
+  recommendationsGrid.innerHTML = recommendations.map(rec => createRecommendationCard(rec)).join('');
+}
+
 // Global functions for recommendation interactions
 window.viewRecommendedPost = (postId) => {
   window.location.href = `post-details.html?id=${encodeURIComponent(postId)}`;
@@ -1940,9 +1994,9 @@ window.contactForRecommendation = async (postId, userPostId) => {
 // Initialize event handlers for AI recommendations
 document.addEventListener('DOMContentLoaded', () => {
   // AI Recommendations button
-  const aiBtn = document.getElementById('aiRecommendationsBtn');
-  if (aiBtn) {
-    aiBtn.addEventListener('click', showAIRecommendations);
+  const aiRecommendationsBtn = document.getElementById('aiRecommendationsBtn');
+  if (aiRecommendationsBtn) {
+    aiRecommendationsBtn.addEventListener('click', showAIRecommendations);
   }
   
  
@@ -1961,10 +2015,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Store recommendations globally for filtering
+// Store recommendations globally for filtering// Store recommendations globally for filtering
 window.currentRecommendations = [];
 
-// Add unclaimPost function globally
+// Add unclaimPost function globally// Add unclaimPost function globally
 window.unclaimPost = async function(postId) {
   if (!currentUser) return;
   try {
@@ -1973,7 +2027,6 @@ window.unclaimPost = async function(postId) {
       claimed: false,
       claimedBy: null
     });
-    // Optionally, remove claim from 'claims' node if you want
     // Reload posts to reflect change
     window.location.reload();
   } catch (error) {
@@ -1981,9 +2034,9 @@ window.unclaimPost = async function(postId) {
   }
 };
 
-// Helper: Upload image file to imgbb and return the image URL
+// Helper: Upload image file to imgbb and return the image URL// Helper: Upload image file to imgbb and return the image URL
 async function uploadImageToImgbb(file) {
-  const apiKey = 'YOUR_IMGBB_API_KEY'; // <-- Replace with your imgbb API key
+  const apiKey = '7f5b86f1efb5c249bafe472c9078a76d'; // Your imgbb API key
   const formData = new FormData();
   formData.append('image', file);
   formData.append('key', apiKey);
@@ -1998,4 +2051,125 @@ async function uploadImageToImgbb(file) {
   } else {
     throw new Error('Image upload failed');
   }
+}
+
+// Remove duplicate import of 'update' if present
+// import { update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+// Only import once at the top of the file if needed
+
+// Fix the AI recommendations button handler
+document.addEventListener('DOMContentLoaded', () => {
+  const aiRecommendationsBtn = document.getElementById('aiRecommendationsBtn');
+  if (aiRecommendationsBtn) {
+    aiRecommendationsBtn.addEventListener('click', showAIRecommendations);
+  }
+});
+
+// Add missing escapeHtml function if not defined
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Fix error with recommendation filters
+const recommendationFilters = document.querySelector('.recommendation-filters');
+if (recommendationFilters) {
+  recommendationFilters.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('filter-btn')) return;
+
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+
+    // Filter recommendations
+    const filter = e.target.dataset.filter;
+    const cards = document.querySelectorAll('.recommendation-card');
+
+    cards.forEach(card => {
+      const scoreEl = card.querySelector('.match-score');
+      if (!scoreEl) return;
+      
+      const score = parseFloat(scoreEl.textContent);
+      switch (filter) {
+        case 'high':
+          card.style.display = score >= 80 ? 'block' : 'none';
+          break;
+        case 'medium':
+          card.style.display = score >= 75 && score < 80 ? 'block' : 'none';
+          break;
+        case 'visual':
+          card.style.display = card.querySelector('.factor-tag[data-type="visual"]') ? 'block' : 'none';
+          break;
+        default:
+          card.style.display = 'block';
+      }
+    });
+  });
+}
+
+// Add missing notification handling setup
+function setupNotificationClickHandler() {
+  document.querySelectorAll('.notification-item').forEach(item => {
+    item.addEventListener('click', async function() {
+      const notificationId = this.dataset.id;
+      const notificationsRef = ref(db, 'notifications');
+      const snapshot = await get(notificationsRef);
+      const data = snapshot.val();
+      
+      if (data && data[notificationId]) {
+        // Mark as read
+        await update(ref(db, `notifications/${notificationId}`), {
+          read: true
+        });
+        
+        // Show notification detail
+        await showNotificationDetail({
+          id: notificationId,
+          ...data[notificationId]
+        });
+      }
+    });
+  });
+}
+
+// --- AI API Usage Limiting ---
+const AI_USER_LIMIT_PER_HOUR = 5; // Max 5 AI calls per user per hour
+const AI_GLOBAL_DAILY_LIMIT = 100; // Max 100 AI calls globally per day (adjust as needed)
+
+function getUserAIUsage() {
+  const usage = JSON.parse(localStorage.getItem('ai_usage') || '{}');
+  const now = Date.now();
+  // Remove entries older than 1 hour
+  Object.keys(usage).forEach(ts => {
+    if (now - Number(ts) > 60 * 60 * 1000) delete usage[ts];
+  });
+  return usage;
+}
+
+function incrementUserAIUsage() {
+  const usage = getUserAIUsage();
+  usage[Date.now()] = 1;
+  localStorage.setItem('ai_usage', JSON.stringify(usage));
+}
+
+function userAIUsageCount() {
+  return Object.keys(getUserAIUsage()).length;
+}
+
+async function getGlobalAIUsage() {
+  // Store global usage in Firebase at /ai_usage/yyyy-mm-dd
+  const today = new Date().toISOString().slice(0, 10);
+  const usageRef = ref(db, `ai_usage/${today}`);
+  const snap = await get(usageRef);
+  return snap.exists() ? snap.val() : 0;
+}
+
+async function incrementGlobalAIUsage() {
+  const today = new Date().toISOString().slice(0, 10);
+  const usageRef = ref(db, `ai_usage/${today}`);
+  const snap = await get(usageRef);
+  const current = snap.exists() ? snap.val() : 0;
+  await set(usageRef, current + 1);
 }
