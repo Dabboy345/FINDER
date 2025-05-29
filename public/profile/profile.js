@@ -169,7 +169,7 @@ function loadUserPosts(user) {
       .map(([id, post]) => ({ id, ...post }))
       .sort((a, b) => b.timestamp - a.timestamp);
 
-    // New: My Claims (posts claimed by me but not created by me)
+    // My Claims (posts claimed by me but not created by me)
     const myClaims = Object.entries(data)
       .filter(([, post]) => post.claimed && post.claimedBy && post.claimedBy.uid === user.uid && post.user.uid !== user.uid)
       .map(([id, post]) => ({ id, ...post }))
@@ -177,17 +177,17 @@ function loadUserPosts(user) {
 
     updateStats();
     updatePostsDisplay(userPosts);
-    updateMyClaimsDisplay(myClaims); // New: show claims
+    updateMyClaimsDisplay(myClaims); // Show claims
   });
 }
 
-// New: Display posts the user has claimed (not their own)
+// Display posts the user has claimed (not their own)
 function updateMyClaimsDisplay(posts) {
   let claimsSection = document.getElementById('myClaimsSection');
   if (!claimsSection) {
     claimsSection = document.createElement('div');
     claimsSection.id = 'myClaimsSection';
-    claimsSection.innerHTML = `<h2>My Claims</h2><div class="my-claims-container"></div>`;
+    claimsSection.innerHTML = `<h2><i class='fas fa-hand-holding'></i> My Claims</h2><div class="my-claims-container"></div>`;
     document.querySelector('.main-content').appendChild(claimsSection);
   }
   const container = claimsSection.querySelector('.my-claims-container');
@@ -196,30 +196,30 @@ function updateMyClaimsDisplay(posts) {
     return;
   }
   container.innerHTML = posts.map(post => `
-    <div class="post claimed my-claim-card" style="box-shadow: 0 8px 32px rgba(44,62,80,0.08); border-radius: 20px; margin-bottom: 2rem; overflow: hidden; background: #fff;">
-      <div class="my-claim-header" style="background: linear-gradient(90deg, #3498db 60%, #e8f8f0 100%); padding: 1.5rem 2rem; color: #223a5e; font-size: 2.2rem; font-weight: 700; letter-spacing: 1px; border-radius: 20px 20px 0 0;">
+    <div class="post claimed my-claim-card">
+      <div class="my-claim-header">
         ${escapeHtml(post.title)}
       </div>
-      <img src="${post.imageData || 'default-image.png'}" alt="${escapeHtml(post.title)}" style="width: 100%; max-height: 320px; object-fit: cover; border-radius: 0 0 0 0;" onerror="this.onerror=null;this.src='default-image.png';" />
+      <img src="${post.imageData || 'default-image.png'}" alt="${escapeHtml(post.title)}" onerror="this.onerror=null;this.src='default-image.png';" />
       <div style="padding: 2rem;">
         ${post.description ? `<div style='font-size:1.2rem; color:#34495e; margin-bottom:1rem;'>${escapeHtml(post.description)}</div>` : ''}
-        ${post.labels?.length ? `<div class="labels" style="margin-bottom:1rem;">${post.labels.map(label => `<span class="label" style="background:#eaf6fb; color:#2980b9; border-radius:16px; padding:0.3rem 1rem; margin-right:0.5rem; font-size:1rem;">${escapeHtml(label)}</span>`).join('')}</div>` : ''}
+        ${post.labels?.length ? `<div class="labels" style="margin-bottom:1rem;">${post.labels.map(label => `<span class="label">${escapeHtml(label)}</span>`).join('')}</div>` : ''}
         <div class="post-meta" style="display:flex; align-items:center; gap:2rem; margin-bottom:1.5rem;">
           <div class="post-info" style="display:flex; align-items:center; gap:0.5rem; color:#888;">
             <i class="fas fa-clock"></i>
             <span>${new Date(post.timestamp).toLocaleString()}</span>
           </div>
         </div>
-        <div class="claim-status claimed" style="background: linear-gradient(90deg, #e8f8f0 60%, #d5f4e6 100%); color: #229954; border-radius: 12px; padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; font-size: 1.1rem; font-weight: 600; box-shadow: 0 2px 8px rgba(46,204,113,0.08);">
-          <div class="claim-info" style="display:flex; align-items:center; gap:0.7rem;">
-            <i class="fas fa-check-circle" style="font-size:1.5rem;"></i>
+        <div class="claim-status claimed">
+          <div class="claim-info">
+            <i class="fas fa-check-circle"></i>
             <span>Claimed by <span style="font-weight:700; color:#2366b8;">you</span></span>
           </div>
-          <button class="chat-btn" style="background: #3498db; color: #fff; border: none; padding: 0.7rem 1.5rem; border-radius: 8px; font-size: 1rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 2px 8px rgba(52,152,219,0.08); transition: background 0.2s;" onclick="openChat('${post.id}', '${post.user.uid}', '${post.user.email}')">
+          <button class="chat-btn" onclick="openChat('${post.id}', '${post.user.uid}', '${post.user.email}')">
             <i class="fas fa-comments"></i>
             Chat with owner
           </button>
-          <button class="unclaim-btn" style="background: #fff; color: #e67e22; border: 2px solid #e67e22; padding: 0.7rem 1.5rem; border-radius: 8px; font-size: 1rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; transition: background 0.2s, color 0.2s;" onmouseover="this.style.background='#e67e22';this.style.color='#fff';" onmouseout="this.style.background='#fff';this.style.color='#e67e22';" onclick="unclaimPost('${post.id}')">
+          <button class="unclaim-btn" onclick="unclaimPost('${post.id}')">
             <i class='fas fa-undo'></i> Unclaim
           </button>
         </div>
