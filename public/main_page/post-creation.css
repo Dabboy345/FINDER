@@ -44,21 +44,30 @@ body {
   z-index: 100;
 }
 
-.logo {
-  font-size: 2.2rem;
-  font-weight: 900;
-  color: #3498db;
-  letter-spacing: 2px;
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   cursor: pointer;
-  text-shadow: 0 2px 8px rgba(52, 152, 219, 0.1);
   transition: all 0.3s ease;
-  user-select: none;
 }
 
-.logo:hover {
-  color: #2980b9;
-  transform: scale(1.08) rotate(-2deg);
-  text-shadow: 0 4px 16px rgba(52, 152, 219, 0.2);
+.logo-container:hover {
+  transform: scale(1.05);
+  opacity: 0.8;
+}
+
+.logo-img {
+  height: 32px;
+  width: auto;
+}
+
+.logo-container span {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #3498db;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 8px rgba(52, 152, 219, 0.1);
 }
 
 .nav-links {
