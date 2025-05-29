@@ -2,6 +2,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/fireba
 import { getDatabase, ref, push, get, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 import { config } from '../config.js';
 
+if (!config?.openai?.apiKey) {
+    console.error('OpenAI API key is missing from config.js');
+}
+
 // Initialize Firebase with config
 const app = initializeApp(config.firebase);
 const db = getDatabase(app);
