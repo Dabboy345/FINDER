@@ -1,31 +1,17 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getDatabase, ref, push, get, set } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { config } from '../config.js';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
-  authDomain: "finder-ff519.firebaseapp.com",
-  databaseURL: "https://finder-ff519-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "finder-ff519",
-  storageBucket: "finder-ff519.appspot.com",
-  messagingSenderId: "989218762868",
-  appId: "1:989218762868:web:7f5160caf34ddccd92e121"
-};
-
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase with config
+const app = initializeApp(config.firebase);
 const db = getDatabase(app);
-
-// Load API key from environment variable or config
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (!OPENAI_API_KEY) {
-  console.error('Missing OpenAI API key. Make sure to set OPENAI_API_KEY in your environment variables.');
-}
 
 // Rate limiting configuration
 const API_CONFIG = {
-  MAX_RETRIES: 3,
-  INITIAL_BACKOFF: 2000,    // 2 seconds
-  MAX_BACKOFF: 60000,       // 1 minute
-  RATE_LIMIT_REQUESTS: 3,   // 3 requests per minute (free tier)
+  MAX_RETRIES: config.openai.rateLimits.maxRetries,
+  INITIAL_BACKOFF: config.openai.rateLimits.initialBackoff,
+  MAX_BACKOFF: config.openai.rateLimits.maxBackoff,
+  RATE_LIMIT_REQUESTS: config.openai.rateLimits.requestsPerMinute,
   RATE_WINDOW: 60000,       // 1 minute in ms
   QUEUE_TIMEOUT: 300000     // 5 minutes queue timeout
 };
@@ -213,7 +199,7 @@ async function compareTexts(text1, text2) {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${config.openai.apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -281,7 +267,7 @@ async function compareImages(imageUrl1, imageUrl2) {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${config.openai.apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
