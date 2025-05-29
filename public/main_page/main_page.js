@@ -62,6 +62,38 @@ async function handleClaim(postId, post) {
   }
 }
 
+// Function to handle unclaim
+async function unclaimPost(postId) {
+  if (!currentUser) {
+    alert("Please log in to unclaim an item.");
+    return;
+  }
+
+  const post = postsMap[postId];
+  if (!post) {
+    alert("Post not found.");
+    return;
+  }
+
+  // Only the user who claimed the post can unclaim it
+  if (!post.claimedBy || post.claimedBy.uid !== currentUser.uid) {
+    alert("You can only unclaim posts you have claimed.");
+    return;
+  }
+
+  try {
+    const postRef = ref(db, `posts/${postId}`);
+    await update(postRef, {
+      claimed: false,
+      claimedBy: null
+    });
+    alert("You have unclaimed this item.");
+  } catch (error) {
+    console.error("Error unclaiming item:", error);
+    alert("Error unclaiming item. Please try again.");
+  }
+}
+
 const postsMap = {};
 const postsRef = ref(db, "posts");
 onValue(postsRef, async (snapshot) => {
@@ -153,7 +185,7 @@ onValue(postsRef, async (snapshot) => {
         <div class="claim-status claimed">
           <i class="fas fa-check-circle"></i>
           <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
-          ${currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid) ? `
+          ${(currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid)) ? `
             <button class="chat-btn" onclick="event.stopPropagation();openChat('${postId}', '${currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid}', '${currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email}')">
               <i class="fas fa-comments"></i>
               Chat
@@ -1175,7 +1207,7 @@ window.dismissSuggestion = () => {
 };
 
 // Enhanced Find Matches function
-async function enhancedFindMatches() {
+document.getElementById('findMatchesBtn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("Please log in to use the matching feature.");
     return;
@@ -1199,7 +1231,7 @@ async function enhancedFindMatches() {
   }
 
   checkForMatchSuggestions(myPosts, postsData);
-}
+});
 
 // Enhanced AI-Powered Recommendation System
 class AIRecommendationEngine {
