@@ -708,6 +708,11 @@ window.handleEditPost = async function(postId) {
         <label for="editLabels">Labels (comma separated)</label>
         <input type="text" id="editLabels" value="${post.labels ? post.labels.join(', ') : ''}">
         
+        <label for="editImage">Image</label>
+        <input type="file" id="editImage" accept="image/*">
+        <div id="currentImagePreview">
+          ${post.imageData ? `<img src="${post.imageData}" alt="Current Image" style="max-width:100px;max-height:100px;" />` : ''}
+        </div>
         <div class="modal-buttons">
           <button type="button" id="cancelEditBtn">Cancel</button>
           <button type="submit">Save Changes</button>
@@ -721,6 +726,7 @@ window.handleEditPost = async function(postId) {
   const closeBtn = editModal.querySelector('.close');
   const cancelBtn = editModal.querySelector('#cancelEditBtn');
   const form = editModal.querySelector('#editPostForm');
+  const imageInput = form.querySelector('#editImage');
 
   const closeModal = () => {
     editModal.remove();
@@ -731,12 +737,22 @@ window.handleEditPost = async function(postId) {
 
   form.onsubmit = async (e) => {
     e.preventDefault();
-    
+    let imageUrl = post.imageData;
+    const file = imageInput.files[0];
+    if (file) {
+      try {
+        imageUrl = await uploadImageToImgbb(file);
+      } catch (err) {
+        alert('Image upload failed. Please try again.');
+        return;
+      }
+    }
     const updatedPost = {
       ...post,
       title: form.editTitle.value.trim(),
       description: form.editDescription.value.trim(),
       labels: form.editLabels.value.split(',').map(label => label.trim()).filter(Boolean),
+      imageData: imageUrl,
       lastEdited: Date.now()
     };
 
@@ -1964,3 +1980,22 @@ window.unclaimPost = async function(postId) {
     alert('Failed to unclaim the post.');
   }
 };
+
+// Helper: Upload image file to imgbb and return the image URL
+async function uploadImageToImgbb(file) {
+  const apiKey = 'YOUR_IMGBB_API_KEY'; // <-- Replace with your imgbb API key
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('key', apiKey);
+
+  const response = await fetch('https://api.imgbb.com/1/upload', {
+    method: 'POST',
+    body: formData
+  });
+  const data = await response.json();
+  if (data && data.success && data.data && data.data.url) {
+    return data.data.url;
+  } else {
+    throw new Error('Image upload failed');
+  }
+}
