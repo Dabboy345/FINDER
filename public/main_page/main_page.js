@@ -1613,6 +1613,100 @@ class AIRecommendationEngine {
       brands: matchedBrands
     };
   }
+
+  // Add this method to the AIRecommendationEngine class
+  async generateRecommendations(userPosts, postsData) {
+    // userPosts: array of posts created by the user
+    // postsData: all posts in the database (object with postId as key)
+    const recommendations = [];
+    const allPosts = Object.entries(postsData)
+      .map(([id, post]) => ({ id, ...post }))
+      .filter(post => post.user && post.user.uid); // Only posts with a user
+
+    for (const userPost of userPosts) {
+      for (const otherPost of allPosts) {
+        if (userPost.id === otherPost.id) continue; // Skip self
+        if (userPost.user.uid === otherPost.user.uid) continue; // Skip own posts
+        // Only match lost <-> found
+        if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue;
+
+        // Compare text and labels for semantic similarity
+        const userText = userPost.title + ' ' + (userPost.description || '') + ' ' + (userPost.labels || []).join(' ');
+        const otherText = otherPost.title + ' ' + (otherPost.description || '') + ' ' + (otherPost.labels || []).join(' ');
+        const semanticScore = this.calculateSemanticSimilarity(userText, otherText);
+
+        // Compare labels directly for overlap
+        const userLabels = (userPost.labels || []).map(l => l.toLowerCase());
+        const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
+        const sharedLabels = userLabels.filter(l => otherLabels.includes(l));
+        const labelScore = sharedLabels.length > 0 ? Math.min(sharedLabels.length / Math.max(userLabels.length, 1), 1) : 0;
+
+        // Visual and other scores
+        const visualScoreObj = this.calculateVisualSimilarity(userPost, otherPost);
+        const visualScore = visualScoreObj.score;
+        const colorScore = this.calculateColorSimilarity(userPost, otherPost).score;
+        const sizeScore = this.calculateSizeSimilarity(userPost, otherPost).score;
+        const brandScore = this.calculateBrandSimilarity(userPost, otherPost).score;
+
+        // Weighted total score (give more weight to text+label match)
+        const totalScore =
+          (semanticScore + labelScore) * (this.weightings.semanticSimilarity + 3) +
+          visualScore * this.weightings.visualSimilarity +
+          colorScore * this.weightings.colorMatch +
+          sizeScore * this.weightings.sizeMatch +
+          brandScore * this.weightings.brandMatch;
+
+        // Categorize match
+        let matchCategory = 'medium';
+        if (totalScore >= 18) matchCategory = 'high';
+        else if (visualScore > 0.5) matchCategory = 'visual';
+
+        // Confidence as percentage
+        const confidence = Math.min(Math.round((totalScore / 30) * 100), 100);
+
+        // Collect matching factors and feedback
+        const matchingFactors = [];
+        if (semanticScore > 0.5) matchingFactors.push('Strong text/description similarity');
+        if (labelScore > 0.3) matchingFactors.push(`Shared label(s): ${sharedLabels.join(', ')}`);
+        if (visualScore > 0.3) matchingFactors.push('Visual similarity');
+        if (colorScore > 0.2) matchingFactors.push('Color match');
+        if (sizeScore > 0.1) matchingFactors.push('Size match');
+        if (brandScore > 0.1) matchingFactors.push('Brand match');
+
+        // User feedback string
+        let feedback = '';
+        if (semanticScore > 0.7 && labelScore > 0.5) {
+          feedback = 'This match is highly relevant based on both text and label similarity.';
+        } else if (semanticScore > 0.7) {
+          feedback = 'This match is highly relevant based on text and description.';
+        } else if (labelScore > 0.5) {
+          feedback = 'This match shares several important labels.';
+        } else if (visualScore > 0.5) {
+          feedback = 'This match looks visually similar.';
+        } else if (matchingFactors.length > 0) {
+          feedback = 'This match shares some similarities.';
+        } else {
+          feedback = 'This match is a possible candidate, but not a strong match.';
+        }
+
+        // Only add if at least one factor is present
+        if (matchingFactors.length > 0) {
+          recommendations.push({
+            userPost,
+            matchedPost: otherPost,
+            totalScore,
+            matchCategory,
+            matchingFactors,
+            confidence,
+            feedback // Add feedback for user
+          });
+        }
+      }
+    }
+    // Sort by confidence descending
+    recommendations.sort((a, b) => b.confidence - a.confidence);
+    return recommendations;
+  }
 }
 
 // Initialize AI Engine
@@ -1728,11 +1822,9 @@ function renderRecommendations(recommendations, filter = 'all') {
 }
 
 function createRecommendationCard(recommendation) {
-  const { userPost, matchedPost, totalScore, matchCategory, matchingFactors, confidence } = recommendation;
-  
+  const { userPost, matchedPost, totalScore, matchCategory, matchingFactors, confidence, feedback } = recommendation;
   const scorePercentage = Math.round(confidence);
   const scoreClass = matchCategory;
-  
   return `
     <div class="recommendation-card" data-category="${matchCategory}">
       <div class="recommendation-header">
@@ -1744,36 +1836,27 @@ function createRecommendationCard(recommendation) {
           <div class="score-fill ${scoreClass}" style="width: ${scorePercentage}%"></div>
         </div>
       </div>
-      
       <div class="recommendation-content">
         <div class="post-preview">
           <div class="post-type ${userPost.type}">${userPost.type.toUpperCase()}</div>
           <div class="post-title">${escapeHtml(userPost.title)}</div>
-          ${userPost.imageData ? 
-            `<img src="${userPost.imageData}" alt="${escapeHtml(userPost.title)}" class="post-image" 
-                  onerror="this.onerror=null;this.src='default-image.png';" />` : 
-            ''
-          }
+          ${userPost.imageData ? `<img src="${userPost.imageData}" alt="${escapeHtml(userPost.title)}" class="post-image" onerror="this.onerror=null;this.src='default-image.png';" />` : ''}
         </div>
-        
         <div class="post-preview">
           <div class="post-type ${matchedPost.type}">${matchedPost.type.toUpperCase()}</div>
           <div class="post-title">${escapeHtml(matchedPost.title)}</div>
-          ${matchedPost.imageData ? 
-            `<img src="${matchedPost.imageData}" alt="${escapeHtml(matchedPost.title)}" class="post-image" 
-                  onerror="this.onerror=null;this.src='default-image.png';" />` : 
-            ''
-          }
+          ${matchedPost.imageData ? `<img src="${matchedPost.imageData}" alt="${escapeHtml(matchedPost.title)}" class="post-image" onerror="this.onerror=null;this.src='default-image.png';" />` : ''}
         </div>
       </div>
-      
+      <div class="ai-feedback" style="margin:1rem 0 0.5rem 0; color:#4a4a4a; font-size:1.08rem; font-weight:500; background:#f6fafd; border-radius:8px; padding:0.7rem 1.2rem;">
+        <i class="fas fa-info-circle" style="color:#3498db;"></i> ${escapeHtml(feedback)}
+      </div>
       <div class="match-factors">
         <h4><i class="fas fa-link"></i> Matching Factors</h4>
         <div class="factor-list">
           ${matchingFactors.map(factor => `<span class="factor-tag">${escapeHtml(factor)}</span>`).join('')}
         </div>
       </div>
-      
       <div class="recommendation-actions">
         <button class="rec-btn rec-btn-primary" onclick="viewRecommendedPost('${matchedPost.id}')">
           <i class="fas fa-eye"></i> View Details
@@ -1805,7 +1888,7 @@ function updateAIInsights(recommendations) {
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
       <div style="background: #e8f5e8; padding: 1rem; border-radius: 8px; text-align: center;">
         <div style="font-size: 1.5rem; font-weight: bold; color: #27ae60;">${highMatches}</div>
-        <div style="color: #27ae60;">High Matches</div>
+               <div style="color: #27ae60;">High Matches</div>
       </div>
       <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; text-align: center;">
         <div style="font-size: 1.5rem; font-weight: bold; color: #f39c12;">${mediumMatches}</div>
@@ -1846,6 +1929,7 @@ document.addEventListener('DOMContentLoaded', () => {
     aiBtn.addEventListener('click', showAIRecommendations);
   }
   
+ 
   // Filter buttons
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('filter-btn')) {
