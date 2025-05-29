@@ -224,14 +224,10 @@ function updatePostsDisplay(posts) {
               <i class="fas fa-check-circle"></i>
               <span>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</span>
             </div>
-            ${currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid) ? `
-              <button class="chat-btn" onclick="openChat('${post.id}', '${
-                currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid
-              }', '${
-                currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email
-              }')">
+            ${(currentUser && (currentUser.uid === post.user.uid || currentUser.uid === post.claimedBy?.uid)) ? `
+              <button class="chat-btn" onclick="openChat('${post.id}', '${currentUser.uid === post.user.uid ? post.claimedBy.uid : post.user.uid}', '${currentUser.uid === post.user.uid ? post.claimedBy.email : post.user.email}')">
                 <i class="fas fa-comments"></i>
-                Chat with the claimer
+                Chat with ${currentUser.uid === post.user.uid ? 'the claimer' : 'the owner'}
               </button>
             ` : ''}
           </div>

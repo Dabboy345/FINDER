@@ -268,6 +268,12 @@ function renderPostDetails(post, isOwner, postId, matchedWithPost = null) {
               <strong>Successfully Claimed!</strong><br>
               <small>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</small>
             </div>
+            ${(isOwner || (currentUser && post.claimedBy && currentUser.uid === post.claimedBy.uid)) ? `
+              <button class="chat-btn" onclick="openChat('${postId}', '${isOwner ? post.claimedBy.uid : post.user.uid}', '${isOwner ? post.claimedBy.email : post.user.email}')">
+                <i class="fas fa-comments"></i>
+                Chat with ${isOwner ? 'the claimer' : 'the owner'}
+              </button>
+            ` : ''}
           </div>
         ` : isOwner ? `
           <div class="claim-status owner-message">
