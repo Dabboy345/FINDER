@@ -14,7 +14,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const OPENAI_API_KEY = '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';
+// Load API key from environment variable or config
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_API_KEY) {
+  console.error('Missing OpenAI API key. Make sure to set OPENAI_API_KEY in your environment variables.');
+}
 
 // Rate limiting configuration
 const API_CONFIG = {
@@ -199,8 +203,6 @@ async function retryWithBackoff(operation, retries = API_CONFIG.MAX_RETRIES) {
   }
   return { error: 'max_retries', message: 'Maximum retry attempts reached' };
 }
-
-let rateLimitedUntil = 0; // Timestamp until which we should not call OpenAI API
 
 async function compareTexts(text1, text2) {
   if (Date.now() < rateLimitedUntil) {
