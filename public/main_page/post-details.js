@@ -20,6 +20,10 @@ let currentUser = null;
 let postId = null;
 let matchedWithId = null;
 
+// Claim functionality variables
+let currentClaimPostId = null;
+let currentClaimPost = null;
+
 function escapeHtml(text) {
   if (!text) return "";
   return text.replace(/[&<>"']/g, m => ({
@@ -51,92 +55,290 @@ function formatDate(timestamp) {
   });
 }
 
+// Function to check if user has already claimed a post
+async function hasUserClaimedPost(postId, userId) {
+  const claimsRef = ref(db, 'claims');
+  const claimsSnapshot = await get(claimsRef);
+  const claims = claimsSnapshot.val();
+  
+  if (!claims) return false;
+  
+  return Object.values(claims).some(claim => 
+    claim.postId === postId && 
+    claim.from.uid === userId
+  );
+}
+
+// Function to create a notification
+async function createNotification(toUserId, title, message, type, postId, additionalData = {}) {
+  const notificationsRef = ref(db, 'notifications');
+  
+  // Check for existing notifications for this post
+  const existingNotificationsSnapshot = await get(notificationsRef);
+  const existingNotifications = existingNotificationsSnapshot.val() || {};
+  
+  // Find if there's an existing notification for this post
+  const existingNotificationId = Object.entries(existingNotifications)
+    .find(([, n]) => n.postId === postId && n.to === toUserId && !n.read)?.[0];
+
+  const newClaim = {
+    from: additionalData.from,
+    message: additionalData.claimMessage,
+    timestamp: Date.now()
+  };
+
+  if (existingNotificationId) {
+    // Update existing notification
+    const updatedNotification = {
+      ...existingNotifications[existingNotificationId],
+      lastUpdated: Date.now(),
+      claimCount: (existingNotifications[existingNotificationId].claimCount || 1) + 1,
+      claims: [
+        ...(existingNotifications[existingNotificationId].claims || []),
+        newClaim
+      ]
+    };
+    await update(ref(db, `notifications/${existingNotificationId}`), updatedNotification);
+  } else {
+    // Create new notification
+    const newNotification = {
+      to: toUserId,
+      title,
+      message,
+      type,
+      postId,
+      timestamp: Date.now(),
+      lastUpdated: Date.now(),
+      read: false,
+      claimCount: 1,
+      claims: [newClaim]
+    };
+    await push(notificationsRef, newNotification);
+  }
+}
+
+// Function to open claim modal
+window.openClaimModal = async function(postId) {
+  if (!currentUser) {
+    alert("Please log in to claim an item.");
+    return;
+  }
+
+  currentClaimPostId = postId;
+  currentClaimPost = await getPostById(postId);
+
+  if (!currentClaimPost) {
+    alert("Post not found.");
+    return;
+  }
+
+  if (currentClaimPost.claimed) {
+    alert("This item has already been claimed.");
+    return;
+  }
+
+  if (currentClaimPost.user && currentClaimPost.user.uid === currentUser.uid) {
+    alert("You cannot claim your own post.");
+    return;
+  }
+
+  // Check if user has already claimed this post
+  const hasAlreadyClaimed = await hasUserClaimedPost(postId, currentUser.uid);
+  if (hasAlreadyClaimed) {
+    alert("You have already submitted a claim for this item.");
+    return;
+  }
+
+  document.getElementById('finderEmail').textContent = currentClaimPost.user?.email || 'User';
+  document.getElementById('claimMessage').value = '';
+  document.getElementById('claimModal').style.display = 'flex';
+};
+
 function renderPostDetails(post, isOwner, postId, matchedWithPost = null) {
   const container = document.getElementById('postDetailsContainer');
+  
+  // If matchedWithPost is present, show both posts side by side
+  if (matchedWithPost) {
+    container.innerHTML = `
+      <div class="matched-posts-container">
+        <div class="matched-post-card">
+          <h3><i class="fas fa-user-circle"></i> Your Post</h3>
+          <div class="matched-post-title">${escapeHtml(matchedWithPost.title)}</div>
+          ${matchedWithPost.imageData ? `
+            <img src="${matchedWithPost.imageData}" alt="Your Post" class="matched-post-image" onerror="this.onerror=null;this.src='default-image.png';" />
+          ` : ''}
+          <div class="matched-post-description">${escapeHtml(matchedWithPost.description || '')}</div>
+          ${(matchedWithPost.labels?.length) ? `
+            <div class="matched-post-labels">
+              ${matchedWithPost.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+        
+        <div class="match-arrow">
+          <i class="fas fa-heart"></i>
+        </div>
+        
+        <div class="matched-post-card">
+          <h3><i class="fas fa-search"></i> Matched Post</h3>
+          <div class="matched-post-title">${escapeHtml(post.title)}</div>
+          ${post.imageData ? `
+            <img src="${post.imageData}" alt="Matched Post" class="matched-post-image" onerror="this.onerror=null;this.src='default-image.png';" />
+          ` : ''}
+          <div class="matched-post-description">${escapeHtml(post.description || '')}</div>
+          ${(post.labels?.length) ? `
+            <div class="matched-post-labels">
+              ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      
+      <div class="post-details-card" style="margin-top: 2rem;">
+        <h2><i class="fas fa-handshake"></i> Match</h2>
+        <div class="post-meta">
+          <div class="meta-item">
+            <i class="fas fa-envelope"></i>
+            <div class="meta-content">
+              <span class="meta-label">Contact</span>
+              <span class="meta-value">${escapeHtml(post.user?.email || "Unknown")}</span>
+            </div>
+          </div>
+          <div class="meta-item">
+            <i class="fas fa-calendar-alt"></i>
+            <div class="meta-content">
+              <span class="meta-label">Match found</span>
+              <span class="meta-value">${formatDate(Date.now())}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Single post view with enhanced styling
   let html = `
     <div class="post-details-card">
       <h2>${escapeHtml(post.title)}</h2>
-      <img src="${post.imageData || 'default-image.png'}" alt="${escapeHtml(post.title)}" style="max-width:300px;margin:1rem 0;border-radius:8px;" onerror="this.onerror=null;this.src='default-image.png';" />
-      <p>${escapeHtml(post.description || '')}</p>
+      
+      ${post.imageData ? `
+        <img src="${post.imageData}" alt="${escapeHtml(post.title)}" class="post-image" onerror="this.onerror=null;this.src='default-image.png';" />
+      ` : ''}
+      
+      <div class="post-description">${escapeHtml(post.description || '')}</div>
+      
       ${post.labels?.length ? `
         <div class="labels">
-          ${post.labels.map(label => `<span class="label">${escapeHtml(label)}</span>`).join('')}
+          ${post.labels.map(label => `<span class="label"><i class="fas fa-tag"></i> ${escapeHtml(label)}</span>`).join('')}
         </div>
       ` : ''}
+      
       <div class="post-meta">
-        <div><i class="fas fa-user"></i> ${escapeHtml(post.user?.email || "Unknown")}</div>
-        <div><i class="fas fa-clock"></i> ${formatDate(post.timestamp)}</div>
-        ${post.lastEdited ? `<div><i class="fas fa-edit"></i> Edited ${formatDate(post.lastEdited)}</div>` : ''}
+        <div class="meta-item">
+          <i class="fas fa-user-circle"></i>
+          <div class="meta-content">
+            <span class="meta-label">Posted by</span>
+            <span class="meta-value">${escapeHtml(post.user?.email || "Unknown")}</span>
+          </div>
+        </div>
+        <div class="meta-item">
+          <i class="fas fa-calendar-alt"></i>
+          <div class="meta-content">
+            <span class="meta-label">Created</span>
+            <span class="meta-value">${formatDate(post.timestamp)}</span>
+          </div>
+        </div>
+        ${post.lastEdited ? `
+          <div class="meta-item">
+            <i class="fas fa-edit"></i>
+            <div class="meta-content">
+              <span class="meta-label">Last edited</span>
+              <span class="meta-value">${formatDate(post.lastEdited)}</span>
+            </div>
+          </div>
+        ` : ''}
       </div>
-      <div style="margin-top:1rem;">
+      
+      <div class="post-actions">
         ${post.claimed ? `
           <div class="claim-status claimed">
             <i class="fas fa-check-circle"></i>
-            Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}
+            <div>
+              <strong>Successfully Claimed!</strong><br>
+              <small>Claimed by ${escapeHtml(post.claimedBy?.email || "Unknown")}</small>
+            </div>
           </div>
         ` : isOwner ? `
-          <div class="owner-message">
+          <div class="claim-status owner-message">
             <i class="fas fa-info-circle"></i>
-            This is your post - waiting for someone to claim it
+            <div>
+              <strong>Your Post</strong><br>
+              <small>Waiting for someone to claim it</small>
+            </div>
           </div>
         ` : `
-          <button class="btn claim-btn" id="claimBtn"><i class="fas fa-hand-holding"></i> Claim Item</button>
+          <button class="btn claim-btn" id="claimBtn">
+            <i class="fas fa-hand-holding"></i> 
+            <span>Claim This Item</span>
+          </button>
         `}
+        
         ${isOwner ? `
-          <button class="btn" id="editBtn"><i class="fas fa-edit"></i> Edit</button>
-          <button class="btn" id="deleteBtn"><i class="fas fa-trash"></i> Delete</button>
+          <button class="btn" id="editBtn" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); box-shadow: 0 6px 20px rgba(243, 156, 18, 0.3);">
+            <i class="fas fa-edit"></i> 
+            <span>Edit Post</span>
+          </button>
+          <button class="btn" id="deleteBtn" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); box-shadow: 0 6px 20px rgba(231, 76, 60, 0.3);">
+            <i class="fas fa-trash"></i> 
+            <span>Delete Post</span>
+          </button>
         ` : ''}
       </div>
     </div>
   `;
 
-  // If matchedWithPost is present, show both posts side by side
-  if (matchedWithPost) {
-    html = `
-      <div style="display:flex;gap:2rem;flex-wrap:wrap;justify-content:center;">
-        <div style="flex:1;min-width:220px;max-width:350px;">
-          <h3>Your Post</h3>
-          <div><strong>${escapeHtml(matchedWithPost.title)}</strong></div>
-          ${matchedWithPost.imageData ? `<img src="${matchedWithPost.imageData}" alt="Your Post" style="max-width:100%;margin:10px 0;border-radius:8px;" onerror="this.onerror=null;this.src='default-image.png';" />` : ''}
-          <div>${escapeHtml(matchedWithPost.description || '')}</div>
-          <div style="margin-top:0.5rem;">
-            ${(matchedWithPost.labels || []).map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
-          </div>
-        </div>
-        <div style="flex:1;min-width:220px;max-width:350px;">
-          <h3>Matched Post</h3>
-          <div><strong>${escapeHtml(post.title)}</strong></div>
-          ${post.imageData ? `<img src="${post.imageData}" alt="Matched Post" style="max-width:100%;margin:10px 0;border-radius:8px;" onerror="this.onerror=null;this.src='default-image.png';" />` : ''}
-          <div>${escapeHtml(post.description || '')}</div>
-          <div style="margin-top:0.5rem;">
-            ${(post.labels || []).map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
   container.innerHTML = html;
 
-  // Add claim, edit, and delete handlers
+  // Add enhanced button handlers
   if (!post.claimed && !isOwner && document.getElementById('claimBtn')) {
     document.getElementById('claimBtn').onclick = async () => {
-      alert('Claim functionality from details page not implemented in this snippet.');
-      // You can reuse your claim modal logic here if needed
+      await openClaimModal(postId);
     };
   }
+  
   if (isOwner && document.getElementById('editBtn')) {
     document.getElementById('editBtn').onclick = async () => {
-      alert('Edit functionality from details page not implemented in this snippet.');
-      // You can reuse your edit modal logic here if needed
+      const editBtn = document.getElementById('editBtn');
+      editBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Loading...</span>';
+      editBtn.disabled = true;
+      
+      setTimeout(() => {
+        alert('✏️ Edit functionality will be implemented soon!');
+        editBtn.innerHTML = '<i class="fas fa-edit"></i> <span>Edit Post</span>';
+        editBtn.disabled = false;
+      }, 1000);
     };
   }
+  
   if (isOwner && document.getElementById('deleteBtn')) {
     document.getElementById('deleteBtn').onclick = async () => {
-      if (confirm("Are you sure you want to delete this post?")) {
-        await set(ref(db, `posts/${postId}`), null);
-        alert("Post deleted.");
-        window.location.href = "main_page.html";
+      const result = confirm("⚠️ Are you sure you want to delete this post? This action cannot be undone.");
+      if (result) {
+        const deleteBtn = document.getElementById('deleteBtn');
+        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Deleting...</span>';
+        deleteBtn.disabled = true;
+        
+        try {
+          await set(ref(db, `posts/${postId}`), null);
+          alert("🗑️ Post deleted successfully!");
+          window.location.href = "main_page.html";
+        } catch (error) {
+          console.error("Error deleting post:", error);
+          alert("❌ Error deleting post. Please try again.");
+          deleteBtn.innerHTML = '<i class="fas fa-trash"></i> <span>Delete Post</span>';
+          deleteBtn.disabled = false;
+        }
       }
     };
   }
@@ -161,3 +363,55 @@ onAuthStateChanged(auth, async (user) => {
   }
   renderPostDetails(post, currentUser && post.user && post.user.uid === currentUser.uid, postId, matchedWithPost);
 });
+
+// Modal event handlers
+document.getElementById('closeClaimModal').onclick =
+document.getElementById('cancelClaimBtn').onclick = function() {
+  document.getElementById('claimModal').style.display = 'none';
+};
+
+// Send claim message handler
+document.getElementById('sendClaimBtn').onclick = async function() {
+  const message = document.getElementById('claimMessage').value.trim();
+  if (!message) {
+    alert('Please enter a message.');
+    return;
+  }
+  if (!currentUser) {
+    alert('You must be logged in to send a claim.');
+    return;
+  }
+
+  try {
+    // Store the message in Firebase
+    const claimsRef = ref(db, 'claims');
+    const newClaim = {
+      postId: currentClaimPostId,
+      postTitle: currentClaimPost.title,
+      to: currentClaimPost.user,
+      from: { uid: currentUser.uid, email: currentUser.email },
+      message,
+      timestamp: Date.now()
+    };
+    await push(claimsRef, newClaim);
+
+    // Create notification for the post creator with additional data
+    await createNotification(
+      currentClaimPost.user.uid,
+      'New Claim Request',
+      `${currentUser.email} wants to claim your item: ${currentClaimPost.title}`,
+      'claim',
+      currentClaimPostId,
+      {
+        from: { uid: currentUser.uid, email: currentUser.email },
+        claimMessage: message
+      }
+    );
+
+    document.getElementById('claimModal').style.display = 'none';
+    alert('Claim request sent successfully!');
+  } catch (error) {
+    console.error('Error sending message:', error);
+    alert('Error sending message. Please try again.');
+  }
+};

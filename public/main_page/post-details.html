@@ -4,13 +4,38 @@
   <meta charset="UTF-8" />
   <title>Finder - Post Details</title>
   <link rel="stylesheet" href="main_page.css" />
+  <link rel="stylesheet" href="post-details.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 <body>
-  <div class="main-content">
-    <div id="postDetailsContainer"></div>
-    <button onclick="window.history.back()" class="btn" style="margin-top:2rem;"><i class="fas fa-arrow-left"></i> Back</button>
+  <div class="post-details-page">
+    <div class="post-details-container">
+      <div id="postDetailsContainer"></div>
+      <div class="back-button-container">
+        <button onclick="window.history.back()" class="back-btn">
+          <i class="fas fa-arrow-left"></i> 
+          <span>Back to Feed</span>
+        </button>
+      </div>
+    </div>
   </div>
+
+  <!-- Claim Modal -->
+  <div id="claimModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close" id="closeClaimModal">&times;</span>
+      <h2>Send a Message to the Finder</h2>
+      <div class="contact-section">
+        <p>Send a message to <span id="finderEmail"></span> about this item:</p>
+        <textarea id="claimMessage" placeholder="Write your message here..." rows="4"></textarea>
+        <div class="modal-buttons">
+          <button id="cancelClaimBtn">Cancel</button>
+          <button id="sendClaimBtn">Send Message</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="post-details.js"></script>
 </body>
 </html>
