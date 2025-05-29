@@ -597,64 +597,68 @@ body {
 .my-claims-section {
   margin-top: 3rem;
   background: var(--card-background);
-  border-radius: 20px;
+  border-radius: 32px;
   box-shadow: var(--card-shadow);
   padding: 2.5rem 2rem 2rem 2rem;
-  max-width: 900px;
+  max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
 }
 
 .my-claims-section h2 {
-  font-size: 2.2rem;
-  color: var(--primary-color);
-  margin-bottom: 2rem;
+  font-size: 2.4rem;
+  color: var(--text-color);
+  margin-bottom: 2.2rem;
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.5px;
 }
 
 .my-claims-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 2rem;
+  gap: 2.5rem;
   justify-content: flex-start;
 }
 
 .my-claim-card {
-  flex: 1 1 320px;
-  min-width: 320px;
-  max-width: 400px;
-  background: #fff;
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(44,62,80,0.08);
-  margin-bottom: 2rem;
+  flex: 1 1 340px;
+  min-width: 340px;
+  max-width: 420px;
+  background: var(--card-background);
+  border-radius: 32px;
+  box-shadow: var(--card-shadow);
+  margin-bottom: 2.5rem;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s;
+  border: 1.5px solid var(--border-color);
 }
 
 .my-claim-card:hover {
   box-shadow: 0 12px 36px rgba(52,152,219,0.18);
+  border-color: var(--primary-color);
 }
 
 .my-claim-header {
-  background: linear-gradient(90deg, #3498db 60%, #e8f8f0 100%);
-  padding: 1.5rem 2rem;
-  color: #223a5e;
-  font-size: 2.2rem;
+  background: linear-gradient(90deg, #f8fafc 60%, #e8f4fd 100%);
+  padding: 1.5rem 2rem 1rem 2rem;
+  color: var(--text-color);
+  font-size: 2rem;
   font-weight: 700;
-  letter-spacing: 1px;
-  border-radius: 20px 20px 0 0;
+  letter-spacing: 0.5px;
+  border-radius: 32px 32px 0 0;
 }
 
 .my-claim-card img {
   width: 100%;
-  max-height: 320px;
+  max-height: 220px;
   object-fit: cover;
   border-radius: 0 0 0 0;
+  background: #f5f6fa;
 }
 
 .my-claim-card .labels {
@@ -668,6 +672,16 @@ body {
   padding: 0.3rem 1rem;
   margin-right: 0.5rem;
   font-size: 1rem;
+  font-weight: 500;
+}
+
+.my-claim-card .post-meta {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  color: var(--text-light);
+  font-size: 1.05rem;
 }
 
 .my-claim-card .claim-status {
@@ -684,7 +698,7 @@ body {
 }
 
 .my-claim-card .chat-btn {
-  background: #3498db;
+  background: var(--primary-color);
   color: #fff;
   border: none;
   padding: 0.7rem 1.5rem;
