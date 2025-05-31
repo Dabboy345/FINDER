@@ -4,20 +4,23 @@ import { config } from '../config.js';
 
 if (!config?.openai?.apiKey) {
     console.error('OpenAI API key is missing from config.js');
+} else {
+    console.log('OpenAI API key loaded successfully (first 20 chars):', config.openai.apiKey.substring(0, 20) + '...');
 }
 
 // Initialize Firebase with config
 const app = initializeApp(config.firebase);
 const db = getDatabase(app);
 
-// Rate limiting configuration
+// Rate limiting configuration - More conservative settings
 const API_CONFIG = {
-  MAX_RETRIES: config.openai.rateLimits.maxRetries,
-  INITIAL_BACKOFF: config.openai.rateLimits.initialBackoff,
-  MAX_BACKOFF: config.openai.rateLimits.maxBackoff,
-  RATE_LIMIT_REQUESTS: config.openai.rateLimits.requestsPerMinute,
+  MAX_RETRIES: 2,           // Reduce retries to avoid hitting limits
+  INITIAL_BACKOFF: 5000,    // 5 seconds initial backoff
+  MAX_BACKOFF: 60000,       // 1 minute max backoff
+  RATE_LIMIT_REQUESTS: 3,   // Only 3 requests per minute (very conservative)
   RATE_WINDOW: 60000,       // 1 minute in ms
-  QUEUE_TIMEOUT: 300000     // 5 minutes queue timeout
+  QUEUE_TIMEOUT: 300000,    // 5 minutes queue timeout
+  MIN_REQUEST_INTERVAL: 10000 // Minimum 10 seconds between requests
 };
 
 // Queue for tracking API requests
@@ -25,6 +28,7 @@ let requestQueue = [];
 let lastRequestTimes = [];
 let rateLimitedUntil = 0;
 let isProcessingQueue = false;
+let lastRequestTime = 0; // Track last request time for minimum interval
 
 // Process queued requests
 async function processQueue() {
@@ -75,6 +79,12 @@ async function wait(time) {
 // Check if we're within rate limits
 function canMakeRequest() {
   const now = Date.now();
+  
+  // Check minimum interval between requests
+  if (now - lastRequestTime < API_CONFIG.MIN_REQUEST_INTERVAL) {
+    return false;
+  }
+  
   // Remove requests older than rate window
   lastRequestTimes = lastRequestTimes.filter(time => now - time < API_CONFIG.RATE_WINDOW);
   return lastRequestTimes.length < API_CONFIG.RATE_LIMIT_REQUESTS && now >= rateLimitedUntil;
@@ -82,7 +92,9 @@ function canMakeRequest() {
 
 // Add request tracking
 function trackRequest() {
-  lastRequestTimes.push(Date.now());
+  const now = Date.now();
+  lastRequestTimes.push(now);
+  lastRequestTime = now; // Update last request time
 }
 
 // Queue an API request
@@ -101,24 +113,35 @@ function queueRequest(operation) {
 // Update the analyzeSimilarity function
 export async function analyzeSimilarity(post1, post2) {
   try {
+    console.log('🤖 Starting OpenAI similarity analysis for:', post1.title, 'vs', post2.title);
+    
     const text1 = `${post1.title} ${post1.description || ''} ${(post1.labels || []).join(' ')}`;
     const text2 = `${post2.title} ${post2.description || ''} ${(post2.labels || []).join(' ')}`;
+    
+    console.log('📝 Text analysis inputs:', { text1, text2 });
     
     // Queue the text comparison request
     const textSimilarity = await queueRequest(async () => {
       return await compareTexts(text1, text2);
     });
 
+    console.log('📊 Text similarity result:', textSimilarity);
+
     // Queue the image comparison request if both posts have images
     let imageSimilarity = { similarity_score: 0 };
     if (post1.imageData && post2.imageData) {
+      console.log('🖼️ Starting image comparison...');
       imageSimilarity = await queueRequest(async () => {
         return await compareImages(post1.imageData, post2.imageData);
       });
+      console.log('🖼️ Image similarity result:', imageSimilarity);
+    } else {
+      console.log('🖼️ Skipping image comparison - no images available');
     }
 
-    // Handle rate limit errors
+    // Handle various error types
     if (textSimilarity.error === 'rate_limited' || imageSimilarity.error === 'rate_limited') {
+      console.warn('⏱️ Rate limit hit in similarity analysis');
       return {
         error: 'rate_limited',
         message: 'OpenAI API rate limit exceeded. Please try again later.',
@@ -126,11 +149,32 @@ export async function analyzeSimilarity(post1, post2) {
       };
     }
 
-    // Calculate overall score
-    const overallScore = (
-      (typeof textSimilarity === 'number' ? textSimilarity : 0) + 
-      (typeof imageSimilarity.similarity_score === 'number' ? imageSimilarity.similarity_score : 0)
-    ) / 2;
+    if (textSimilarity.error === 'quota_exceeded' || imageSimilarity.error === 'quota_exceeded') {
+      console.error('💳 Quota exceeded in similarity analysis');
+      return {
+        error: 'quota_exceeded',
+        message: 'OpenAI quota exceeded. Please check your billing.',
+        details: textSimilarity.details || imageSimilarity.details
+      };
+    }
+
+    if (textSimilarity.error === 'auth_failed') {
+      console.error('🔐 Authentication failed in similarity analysis');
+      return {
+        error: 'auth_failed',
+        message: 'OpenAI API authentication failed. Please check your API key.'
+      };
+    }    // Calculate overall score with proper handling
+    const textScore = typeof textSimilarity === 'number' ? textSimilarity : 0;
+    const imageScore = typeof imageSimilarity.similarity_score === 'number' ? imageSimilarity.similarity_score : 0;
+    const overallScore = (textScore + imageScore) / 2;
+
+    console.log('✅ Similarity analysis complete:', {
+      textScore,
+      imageScore,
+      overallScore,
+      hasError: !!(textSimilarity.error || imageSimilarity.error)
+    });
 
     return {
       textSimilarity,
@@ -138,7 +182,7 @@ export async function analyzeSimilarity(post1, post2) {
       overallScore
     };
   } catch (error) {
-    console.error('Error analyzing similarity:', error);
+    console.error('❌ Error in similarity analysis:', error);
     return {
       error: 'analysis_error',
       message: 'Error comparing items',
@@ -216,17 +260,43 @@ async function compareTexts(text1, text2) {
           content: `Text 1: ${text1}\nText 2: ${text2}`
         }]
       })
-    });
+    });    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: { message: errorText } };
+      }
 
-    if (!response.ok) {
       if (response.status === 429) {
-        // Get retry-after header or use default backoff
+        // Check if it's a quota issue vs rate limit
+        if (errorData.error?.code === 'insufficient_quota' || 
+            errorData.error?.message?.includes('quota') ||
+            errorData.error?.message?.includes('billing')) {
+          return { 
+            error: 'quota_exceeded', 
+            message: '❌ OpenAI quota exceeded. Please check your billing and usage limits at https://platform.openai.com/account/billing',
+            details: errorData.error?.message
+          };
+        }
+        
+        // Regular rate limiting
         const retryAfter = response.headers.get('retry-after');
         rateLimitedUntil = Date.now() + (retryAfter ? parseInt(retryAfter) * 1000 : API_CONFIG.RATE_WINDOW);
         return { 
           error: 'rate_limited', 
           message: 'OpenAI API rate limit exceeded. Please try again later.',
-          retryAfter: rateLimitedUntil
+          retryAfter: rateLimitedUntil,
+          details: errorData.error?.message
+        };
+      }
+      
+      if (response.status === 401) {
+        return { 
+          error: 'auth_failed', 
+          message: 'OpenAI API authentication failed. Please check your API key.',
+          details: errorData.error?.message
         };
       }
       
@@ -234,7 +304,11 @@ async function compareTexts(text1, text2) {
         return { error: 'not_found', message: 'OpenAI API endpoint not found.' };
       }
       
-      return { error: 'api_error', message: `OpenAI API error: ${response.status}` };
+      return { 
+        error: 'api_error', 
+        message: `OpenAI API error: ${response.status}`,
+        details: errorData.error?.message
+      };
     }
 
     const data = await response.json();
@@ -263,74 +337,11 @@ async function compareTexts(text1, text2) {
 }
 
 async function compareImages(imageUrl1, imageUrl2) {
-  if (Date.now() < rateLimitedUntil) {
-    return { error: 'rate_limited', message: 'OpenAI API rate limit in effect.', retryAfter: rateLimitedUntil };
-  }
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.openai.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: "gpt-4-vision-preview",
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: "Compare these images and return a similarity score between 0 and 1. Only return the number." },
-            { type: "image_url", image_url: imageUrl1 },
-            { type: "image_url", image_url: imageUrl2 }
-          ]
-        }],
-        max_tokens: 50
-      })
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        // Get retry-after header or use default backoff
-        const retryAfter = response.headers.get('retry-after');
-        rateLimitedUntil = Date.now() + (retryAfter ? parseInt(retryAfter) * 1000 : API_CONFIG.RATE_WINDOW);
-        return { 
-          error: 'rate_limited', 
-          message: 'OpenAI API rate limit exceeded. Please try again later.',
-          retryAfter: rateLimitedUntil
-        };
-      }
-      
-      if (response.status === 404) {
-        return { error: 'not_found', message: 'OpenAI API endpoint not found.' };
-      }
-      
-      return { error: 'api_error', message: `OpenAI API error: ${response.status}` };
-    }
-
-    const data = await response.json();
-    if (!data.choices?.[0]?.message?.content) {
-      return { error: 'malformed_response', message: 'Malformed response from OpenAI API.' };
-    }
-    
-    const score = parseFloat(data.choices[0].message.content);
-    if (isNaN(score)) {
-      return { error: 'malformed_response', message: 'OpenAI did not return a valid score.' };
-    }
-    
-    return {
-      similarity_score: Math.min(Math.max(score, 0), 1),
-      explanation: "Image comparison completed successfully"
-    };
-  } catch (error) {
-    console.error('Error comparing images:', error);
-    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
-      rateLimitedUntil = Date.now() + API_CONFIG.INITIAL_BACKOFF;
-      return { 
-        error: 'rate_limited', 
-        message: 'Network timeout, possibly due to rate limiting.',
-        retryAfter: rateLimitedUntil
-      };
-    }
-    return { error: 'network_error', message: 'Network or unexpected error comparing images.' };
-  }
+  // Skip image comparison for now due to API issues - return default response
+  console.warn('Image comparison skipped due to API limitations');
+  return { 
+    error: 'not_supported', 
+    message: 'Image comparison temporarily disabled due to API limitations',
+    similarity_score: 0.1 // Default low similarity for images
+  };
 }

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI System Verification Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            max-width: 1200px;
+        }
+        
+        .test-section {
+            border: 1px solid #ddd;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .test-section h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .test-result {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .warning {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        button {
+            padding: 10px 20px;
+            margin: 10px 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .status-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .status-error {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .status-pending {
+            background: #ffc107;
+            color: #212529;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 AI Recommendation System Verification</h1>
+    <p>This tool verifies that the AI recommendation system is functioning correctly with real OpenAI API calls.</p>
+
+    <div class="test-section">
+        <h2>1. Configuration Verification</h2>
+        <button onclick="testConfig()">Test Configuration</button>
+        <div id="configResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. OpenAI API Connection Test</h2>
+        <button onclick="testOpenAIConnection()">Test API Connection</button>
+        <div id="connectionResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Direct OpenAI API Call Test</h2>
+        <button onclick="testDirectAPI()">Test Direct API Call</button>
+        <div id="directApiResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. AI Similarity Analysis Test</h2>
+        <button onclick="testSimilarityAnalysis()">Test Similarity Analysis</button>
+        <div id="similarityResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Full AI Recommendation Flow Test</h2>
+        <button onclick="testFullFlow()">Test Full Recommendation Flow</button>
+        <div id="fullFlowResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>6. Real-time System Monitor</h2>
+        <button onclick="startMonitoring()">Start Real-time Monitoring</button>
+        <button onclick="stopMonitoring()">Stop Monitoring</button>
+        <div id="monitorResult"></div>
+    </div>
+
+    <script type="module">
+        import { config } from '../config.js';
+        import { analyzeSimilarity } from './openai-service.js';
+        
+        // Test results storage
+        let testResults = {};
+        let monitoringInterval = null;
+        
+        // Utility functions
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="test-result ${type}">${message}</div>`;
+        }
+        
+        function appendResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML += `<div class="test-result ${type}">${message}</div>`;
+        }
+        
+        function setLoading(buttonElement, isLoading) {
+            if (isLoading) {
+                buttonElement.classList.add('loading');
+                buttonElement.textContent = buttonElement.textContent + ' (Loading...)';
+            } else {
+                buttonElement.classList.remove('loading');
+                buttonElement.textContent = buttonElement.textContent.replace(' (Loading...)', '');
+            }
+        }
+
+        // Test 1: Configuration
+        window.testConfig = function() {
+            const button = event.target;
+            setLoading(button, true);
+            
+            try {
+                const results = [];
+                
+                // Check OpenAI API key
+                if (config?.openai?.apiKey) {
+                    const key = config.openai.apiKey;
+                    if (key.startsWith('sk-')) {
+                        results.push(`<span class="status-badge status-success">✓</span>OpenAI API Key: Valid format (${key.substring(0, 20)}...)`);
+                    } else {
+                        results.push(`<span class="status-badge status-error">✗</span>OpenAI API Key: Invalid format`);
+                    }
+                } else {
+                    results.push(`<span class="status-badge status-error">✗</span>OpenAI API Key: Missing`);
+                }
+                
+                // Check rate limits
+                if (config?.openai?.rateLimits) {
+                    results.push(`<span class="status-badge status-success">✓</span>Rate Limits: Configured (${config.openai.rateLimits.requestsPerMinute}/min)`);
+                } else {
+                    results.push(`<span class="status-badge status-error">✗</span>Rate Limits: Not configured`);
+                }
+                
+                // Check Firebase config
+                if (config?.firebase?.apiKey) {
+                    results.push(`<span class="status-badge status-success">✓</span>Firebase: Configured`);
+                } else {
+                    results.push(`<span class="status-badge status-error">✗</span>Firebase: Missing configuration`);
+                }
+                
+                testResults.config = results.every(r => r.includes('status-success'));
+                
+                showResult('configResult', results.join('<br>'), testResults.config ? 'success' : 'error');
+                
+            } catch (error) {
+                showResult('configResult', `Configuration test failed: ${error.message}`, 'error');
+                testResults.config = false;
+            } finally {
+                setLoading(button, false);
+            }
+        };
+
+        // Test 2: OpenAI Connection
+        window.testOpenAIConnection = async function() {
+            const button = event.target;
+            setLoading(button, true);
+            
+            try {
+                showResult('connectionResult', 'Testing OpenAI API connection...', 'warning');
+                
+                const response = await fetch('https://api.openai.com/v1/models', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${config.openai.apiKey}`
+                    }
+                });
+                
+                const responseText = await response.text();
+                
+                if (response.ok) {
+                    const data = JSON.parse(responseText);
+                    const models = data.data || [];
+                    testResults.connection = true;
+                    
+                    showResult('connectionResult', 
+                        `<span class="status-badge status-success">✓</span>OpenAI API connection successful!<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Models available:</strong> ${models.length}<br>
+                        <strong>Sample models:</strong> ${models.slice(0, 3).map(m => m.id).join(', ')}`, 
+                        'success'
+                    );
+                } else {
+                    testResults.connection = false;
+                    showResult('connectionResult', 
+                        `<span class="status-badge status-error">✗</span>OpenAI API connection failed!<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Error:</strong> ${responseText}`, 
+                        'error'
+                    );
+                }
+                
+            } catch (error) {
+                testResults.connection = false;
+                showResult('connectionResult', 
+                    `<span class="status-badge status-error">✗</span>Connection test failed: ${error.message}`, 
+                    'error'
+                );
+            } finally {
+                setLoading(button, false);
+            }
+        };
+
+        // Test 3: Direct API Call
+        window.testDirectAPI = async function() {
+            const button = event.target;
+            setLoading(button, true);
+            
+            try {
+                showResult('directApiResult', 'Making direct OpenAI API call...', 'warning');
+                
+                const startTime = Date.now();
+                
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${config.openai.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-3.5-turbo",
+                        messages: [{
+                            role: "system", 
+                            content: "You are a helpful assistant. Respond with just the word 'SUCCESS' to confirm the API is working."
+                        }, {
+                            role: "user",
+                            content: "Test message"
+                        }],
+                        max_tokens: 10
+                    })
+                });
+                
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const message = data.choices?.[0]?.message?.content || 'No content';
+                    testResults.directAPI = true;
+                    
+                    showResult('directApiResult', 
+                        `<span class="status-badge status-success">✓</span>Direct API call successful!<br>
+                        <strong>Response time:</strong> ${responseTime}ms<br>
+                        <strong>Message:</strong> ${message}<br>
+                        <strong>Usage:</strong> ${data.usage?.total_tokens || 0} tokens<br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`, 
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    testResults.directAPI = false;
+                    showResult('directApiResult', 
+                        `<span class="status-badge status-error">✗</span>Direct API call failed!<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Error:</strong> ${errorText}`, 
+                        'error'
+                    );
+                }
+                
+            } catch (error) {
+                testResults.directAPI = false;
+                showResult('directApiResult', 
+                    `<span class="status-badge status-error">✗</span>Direct API call failed: ${error.message}`, 
+                    'error'
+                );
+            } finally {
+                setLoading(button, false);
+            }
+        };
+
+        // Test 4: Similarity Analysis
+        window.testSimilarityAnalysis = async function() {
+            const button = event.target;
+            setLoading(button, true);
+            
+            try {
+                showResult('similarityResult', 'Testing AI similarity analysis...', 'warning');
+                
+                // Create test posts
+                const lostPost = {
+                    id: 'test-lost-1',
+                    title: 'Lost iPhone 13 Pro',
+                    description: 'Black iPhone 13 Pro with cracked screen, lost near the university library',
+                    location: 'University Campus',
+                    labels: ['phone', 'electronics', 'black'],
+                    type: 'lost',
+                    user: { uid: 'test-user-1', username: 'TestUser1' }
+                };
+                
+                const foundPost = {
+                    id: 'test-found-1',
+                    title: 'Found mobile phone',
+                    description: 'Found a dark colored smartphone with damaged screen near the library',
+                    location: 'University Campus',
+                    labels: ['phone', 'mobile', 'damaged'],
+                    type: 'found',
+                    user: { uid: 'test-user-2', username: 'TestUser2' }
+                };
+                
+                const startTime = Date.now();
+                const similarity = await analyzeSimilarity(lostPost, foundPost);
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+                
+                if (similarity && !similarity.error) {
+                    testResults.similarity = true;
+                    showResult('similarityResult', 
+                        `<span class="status-badge status-success">✓</span>AI similarity analysis successful!<br>
+                        <strong>Response time:</strong> ${responseTime}ms<br>
+                        <strong>Overall score:</strong> ${similarity.overallScore}<br>
+                        <strong>Text similarity:</strong> ${similarity.textSimilarity}<br>
+                        <strong>Reasoning:</strong> ${similarity.reasoning || 'Not provided'}<br>
+                        <pre>${JSON.stringify(similarity, null, 2)}</pre>`, 
+                        'success'
+                    );
+                } else {
+                    testResults.similarity = false;
+                    showResult('similarityResult', 
+                        `<span class="status-badge status-error">✗</span>AI similarity analysis failed!<br>
+                        <strong>Error:</strong> ${similarity?.error || 'Unknown error'}<br>
+                        <pre>${JSON.stringify(similarity, null, 2)}</pre>`, 
+                        'error'
+                    );
+                }
+                
+            } catch (error) {
+                testResults.similarity = false;
+                showResult('similarityResult', 
+                    `<span class="status-badge status-error">✗</span>Similarity analysis failed: ${error.message}`, 
+                    'error'
+                );
+            } finally {
+                setLoading(button, false);
+            }
+        };
+
+        // Test 5: Full Flow Test  
+        window.testFullFlow = async function() {
+            const button = event.target;
+            setLoading(button, true);
+            
+            try {
+                showResult('fullFlowResult', 'Testing full AI recommendation flow...', 'warning');
+                
+                // This would require access to the main page functions
+                // For now, just show what we would test
+                appendResult('fullFlowResult', 
+                    `<span class="status-badge status-pending">⚠</span>Full flow test requires logged in user and main page context.<br>
+                    <strong>To test manually:</strong><br>
+                    1. Log in to the main page<br>
+                    2. Create test posts (lost & found)<br>
+                    3. Click "Get AI Recommendations"<br>
+                    4. Check browser console for API calls<br>
+                    5. Verify recommendations appear`, 
+                    'warning'
+                );
+                
+            } catch (error) {
+                showResult('fullFlowResult', 
+                    `<span class="status-badge status-error">✗</span>Full flow test error: ${error.message}`, 
+                    'error'
+                );
+            } finally {
+                setLoading(button, false);
+            }
+        };
+
+        // Test 6: Real-time monitoring
+        window.startMonitoring = function() {
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+            }
+            
+            showResult('monitorResult', 'Starting real-time monitoring...', 'warning');
+            
+            let monitorCount = 0;
+            monitoringInterval = setInterval(async () => {
+                monitorCount++;
+                
+                try {
+                    // Quick API health check
+                    const response = await fetch('https://api.openai.com/v1/models', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${config.openai.apiKey}`
+                        }
+                    });
+                    
+                    const status = response.ok ? 'healthy' : `error-${response.status}`;
+                    const timestamp = new Date().toLocaleTimeString();
+                    
+                    appendResult('monitorResult', 
+                        `<span class="status-badge ${response.ok ? 'status-success' : 'status-error'}">
+                        ${response.ok ? '✓' : '✗'}</span>[${timestamp}] Check #${monitorCount}: API ${status}`, 
+                        response.ok ? 'success' : 'error'
+                    );
+                    
+                } catch (error) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    appendResult('monitorResult', 
+                        `<span class="status-badge status-error">✗</span>[${timestamp}] Check #${monitorCount}: ${error.message}`, 
+                        'error'
+                    );
+                }
+            }, 10000); // Check every 10 seconds
+        };
+
+        window.stopMonitoring = function() {
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+                monitoringInterval = null;
+                appendResult('monitorResult', 
+                    `<span class="status-badge status-pending">⏹</span>Monitoring stopped.`, 
+                    'warning'
+                );
+            }
+        };
+
+        // Auto-run configuration test on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.querySelector('button[onclick="testConfig()"]').click();
+            }, 1000);
+        });
+        
+    </script>
+</body>
+</html>

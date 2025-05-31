@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/fireba
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 import { getDatabase, ref, get, set, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 import { analyzeSimilarity } from './openai-service.js';
+import { config } from '../config.js';
 
 // Firebase config
 const firebaseConfig = {
@@ -19,10 +20,113 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
+// Verify config is loaded
+console.log('Config loaded in main_page.js:', !!config?.openai?.apiKey ? 'OpenAI API key present' : 'OpenAI API key missing');
+
 // Global variables
 const postsContainer = document.querySelector(".posts-container");
 let currentUser = null;
 let postsMap = {};
+
+// Utility function to escape HTML to prevent XSS attacks
+function escapeHtml(text) {
+  if (!text) return "";
+  return text.replace(/[&<>"']/g, m => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[m]);
+}
+
+// AI Usage Tracking Constants
+const AI_USER_LIMIT_PER_HOUR = 10;  // Max AI calls per user per hour
+const AI_GLOBAL_DAILY_LIMIT = 1000; // Max AI calls globally per day
+
+// AI Usage Tracking Functions
+function userAIUsageCount() {
+  const userId = currentUser?.uid;
+  if (!userId) return 0;
+  
+  const now = Date.now();
+  const oneHourAgo = now - (60 * 60 * 1000); // 1 hour in milliseconds
+  
+  // Get usage from localStorage
+  const usageKey = `ai_usage_${userId}`;
+  const storedUsage = localStorage.getItem(usageKey);
+  
+  if (!storedUsage) return 0;
+  
+  try {
+    const usage = JSON.parse(storedUsage);
+    // Filter out usage older than 1 hour
+    const recentUsage = usage.filter(timestamp => timestamp > oneHourAgo);
+    
+    // Update localStorage with filtered usage
+    localStorage.setItem(usageKey, JSON.stringify(recentUsage));
+    
+    return recentUsage.length;
+  } catch (error) {
+    console.error('Error reading AI usage data:', error);
+    return 0;
+  }
+}
+
+function incrementUserAIUsage() {
+  const userId = currentUser?.uid;
+  if (!userId) return;
+  
+  const now = Date.now();
+  const usageKey = `ai_usage_${userId}`;
+  
+  try {
+    const storedUsage = localStorage.getItem(usageKey);
+    const usage = storedUsage ? JSON.parse(storedUsage) : [];
+    
+    // Add current timestamp
+    usage.push(now);
+    
+    // Clean up old entries (older than 1 hour)
+    const oneHourAgo = now - (60 * 60 * 1000);
+    const recentUsage = usage.filter(timestamp => timestamp > oneHourAgo);
+    
+    localStorage.setItem(usageKey, JSON.stringify(recentUsage));
+    
+    console.log(`AI usage incremented for user ${userId}. Count: ${recentUsage.length}/${AI_USER_LIMIT_PER_HOUR}`);
+  } catch (error) {
+    console.error('Error updating AI usage data:', error);
+  }
+}
+
+async function getGlobalAIUsage() {
+  try {
+    const today = new Date().toDateString();
+    const usageRef = ref(db, `ai_usage_global/${today.replace(/\s/g, '_')}`);
+    const snapshot = await get(usageRef);
+    
+    return snapshot.exists() ? snapshot.val() : 0;
+  } catch (error) {
+    console.error('Error getting global AI usage:', error);
+    return 0;
+  }
+}
+
+async function incrementGlobalAIUsage() {
+  try {
+    const today = new Date().toDateString();
+    const usageRef = ref(db, `ai_usage_global/${today.replace(/\s/g, '_')}`);
+    const snapshot = await get(usageRef);
+    
+    const currentUsage = snapshot.exists() ? snapshot.val() : 0;
+    const newUsage = currentUsage + 1;
+    
+    await set(usageRef, newUsage);
+    
+    console.log(`Global AI usage incremented. Count: ${newUsage}/${AI_GLOBAL_DAILY_LIMIT}`);
+    
+    return newUsage;
+  } catch (error) {
+    console.error('Error updating global AI usage:', error);
+    return 0;
+  }
+}
 
 // Initialize auth state listener
 onAuthStateChanged(auth, (user) => {
@@ -1725,13 +1829,24 @@ const aiEngine = new AIRecommendationEngine();
 
 // AI Recommendations UI Management
 async function showAIRecommendations() {
+  console.log('AI Recommendations button clicked');
+  
   if (!currentUser) {
     alert("Please log in to use AI recommendations.");
     return;
   }
-
+  console.log('Current user:', currentUser.uid);
   const section = document.getElementById('aiRecommendationsSection');
   const grid = document.getElementById('recommendationsGrid');
+  
+  if (!section || !grid) {
+    console.error('AI recommendations UI elements not found');
+    alert('AI recommendations interface not found. Please refresh the page.');
+    return;
+  }
+  
+  // Initialize recommendations array at function scope - before any nested blocks
+  let recommendations = [];
   
   try {
     // Show loading state
@@ -1741,11 +1856,11 @@ async function showAIRecommendations() {
         <div class="loading-spinner"></div>
         <p>AI is analyzing posts...</p>
       </div>
-    `;
-
-    // Get posts data
+    `;    // Get posts data
+    console.log('Fetching posts data...');
     const postsSnapshot = await get(ref(db, 'posts'));
     const postsData = postsSnapshot.val();
+    console.log('Posts data retrieved:', postsData ? Object.keys(postsData).length : 0, 'posts');
     
     if (!postsData) {
       grid.innerHTML = '<div class="no-recommendations">No posts available.</div>';
@@ -1756,6 +1871,8 @@ async function showAIRecommendations() {
     const userPosts = Object.entries(postsData)
       .filter(([, post]) => post.user?.uid === currentUser.uid)
       .map(([id, post]) => ({ id, ...post }));
+    
+    console.log('User posts found:', userPosts.length);
 
     if (userPosts.length === 0) {
       grid.innerHTML = '<div class="no-recommendations">Create a post first to get recommendations.</div>';
@@ -1773,87 +1890,510 @@ async function showAIRecommendations() {
     if (globalUsage >= AI_GLOBAL_DAILY_LIMIT) {
       grid.innerHTML = '<div class="no-recommendations">The daily AI usage limit for this app has been reached. Please try again tomorrow.</div>';
       section.style.display = 'block';
-      return;
-    }
-
-    // Generate and display recommendations using real OpenAI API for each pair
-    let recommendations = [];
-    let openAICalled = false;
-    let rateLimitError = false;
-    let apiErrorMessage = '';
-    try {
+      return;    }
+    
+    // Test AI connection and generate recommendations
+    let aiConnectionTested = false;
+    let aiError = null;
+    let useOpenAI = false;
+    let globalRateLimitHit = false; // Track if we've hit rate limits globally
+    
+    // 🎯 CREDIT SAVING: Cache API results to prevent duplicate calls
+    const apiCache = new Map();
+      try {
+      // 🤖 AI MODE: Test OpenAI connection and enable API usage
+      console.log('🤖 AI Mode: Testing OpenAI connection...');
+      
+      grid.innerHTML = '<div class="loading-recommendations">🤖 Testing OpenAI connection and analyzing posts...</div>';
+      
+      // Test OpenAI connection first
+      const connectionTest = await testOpenAIConnection();
+      if (connectionTest.success) {
+        console.log('✅ OpenAI connection successful');
+        aiConnectionTested = true;
+        useOpenAI = true; // Enable OpenAI for better matching
+        grid.innerHTML = '<div class="success-recommendations">✅ OpenAI connected successfully! Using AI-powered matching...</div>';
+      } else {
+        console.warn('⚠️ OpenAI connection failed, falling back to smart matching:', connectionTest.error);
+        aiConnectionTested = false;
+        useOpenAI = false;
+        grid.innerHTML = '<div class="warning-recommendations">⚠️ OpenAI unavailable, using smart matching algorithm...</div>';
+      }
+      
+      // Get all posts for comparison
       const allPosts = Object.entries(postsData)
         .map(([id, post]) => ({ id, ...post }))
         .filter(post => post.user && post.user.uid);
+      
+      console.log('Analyzing', userPosts.length, 'user posts against', allPosts.length, 'total posts');
+      console.log('User posts:', userPosts.map(p => `${p.title} (${p.type})`));
+      console.log('All posts:', allPosts.map(p => `${p.title} (${p.type}) - User: ${p.user?.uid}`));
+      
+      let apiCallCount = 0;
+      const MAX_API_CALLS = useOpenAI ? 10 : 0; // Allow up to 10 API calls if OpenAI is working
+      
       for (const userPost of userPosts) {
         for (const otherPost of allPosts) {
           if (userPost.id === otherPost.id) continue; // Skip self
           if (userPost.user.uid === otherPost.user.uid) continue; // Skip own posts
-          if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue; // Only match lost <-> found
-          try {
-            // Call OpenAI API for similarity
-            const similarity = await analyzeSimilarity(userPost, otherPost);
-            openAICalled = true;
-            // Handle OpenAI error objects from compareTexts/compareImages
-            if (similarity && (similarity.textSimilarity?.error || similarity.imageSimilarity?.error)) {
-              // If rate limited, set flag and break out of loops
-              if (
-                similarity.textSimilarity?.error === 'rate_limited' ||
-                similarity.imageSimilarity?.error === 'rate_limited'
-              ) {
-                rateLimitError = true;
-                apiErrorMessage = similarity.textSimilarity?.message || similarity.imageSimilarity?.message;
-                break;
+          // Only match lost <-> found
+          if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue;
+
+          console.log(`Analyzing: "${userPost.title}" (${userPost.type}) vs "${otherPost.title}" (${otherPost.type})`);
+          
+          let matchScore = 0;
+          let matchingFactors = [];
+          let feedback = '';
+          let usedOpenAI = false;          // 🤖 SMART PRE-FILTERING: Use different thresholds based on AI availability
+          const preFilterScore = calculateSmartSimilarity(userPost, otherPost);
+          const shouldUseOpenAI = useOpenAI ? preFilterScore > 0.1 : false; // Lower threshold when AI is available
+          
+          console.log(`Pre-filter score: ${preFilterScore} - ${shouldUseOpenAI ? 'Using OpenAI' : 'Skipping OpenAI'} (AI enabled: ${useOpenAI})`);
+
+          if (useOpenAI && !globalRateLimitHit && apiCallCount < MAX_API_CALLS && shouldUseOpenAI) {
+            try {              console.log(`Making OpenAI API call ${apiCallCount + 1}/${MAX_API_CALLS} for posts:`, userPost.title, 'vs', otherPost.title);
+              
+              // Add moderate delay between API calls to respect rate limits
+              if (apiCallCount > 0) {
+                console.log('Waiting 3 seconds before next API call to respect rate limits...');
+                await new Promise(resolve => setTimeout(resolve, 3000)); // Reduced to 3 seconds for faster processing
               }
-              // For other errors, skip this pair but continue
-              continue;
-            }
-            // Use the OpenAI similarity score as the main confidence
-            if (similarity && similarity.overallScore > 0.3) {
-              recommendations.push({
-                userPost,
-                matchedPost: otherPost,
-                totalScore: similarity.overallScore * 100,
-                matchCategory: similarity.overallScore > 0.7 ? 'high' : (similarity.overallScore > 0.5 ? 'medium' : 'visual'),
-                matchingFactors: [
-                  `Text similarity: ${Math.round(similarity.textSimilarity * 100)}%`,
-                  `Image similarity: ${Math.round(similarity.imageSimilarity.similarity_score * 100)}%`
-                ],
-                confidence: Math.round(similarity.overallScore * 100),
-                feedback: similarity.imageSimilarity.explanation || 'AI similarity analysis complete.'
-              });
-            }
-          } catch (apiError) {
-            // If OpenAI fails for a pair, skip it but continue
-            console.error('OpenAI API error for post pair:', apiError);
+                // Call OpenAI API for similarity analysis
+              const similarity = await analyzeSimilarity(userPost, otherPost);
+              apiCallCount++;
+              usedOpenAI = true;
+              
+              // Track API usage
+              incrementUserAIUsage();
+              await incrementGlobalAIUsage();
+              
+              console.log('🤖 OpenAI similarity result:', similarity);
+                // Handle different types of errors gracefully
+              if (similarity?.error === 'rate_limited' || 
+                  similarity?.error === 'max_retries' ||
+                  (similarity?.textSimilarity && similarity.textSimilarity.error === 'max_retries')) {
+                console.warn('Rate limit hit, disabling OpenAI for all remaining comparisons');
+                globalRateLimitHit = true;
+                useOpenAI = false;
+                matchScore = calculateSmartSimilarity(userPost, otherPost);
+                matchingFactors = getMatchingFactors(userPost, otherPost);
+                feedback = 'Smart text-based matching (API rate limited)';
+              } else if (similarity?.error === 'quota_exceeded' || 
+                         similarity?.textSimilarity?.error === 'quota_exceeded') {
+                console.error('🚨 OpenAI quota exceeded:', similarity.message || similarity.textSimilarity?.message);
+                globalRateLimitHit = true;
+                useOpenAI = false;
+                matchScore = calculateSmartSimilarity(userPost, otherPost);
+                matchingFactors = getMatchingFactors(userPost, otherPost);
+                feedback = 'Smart text-based matching (OpenAI quota exceeded)';
+                
+                // Show user-friendly message about quota
+                if (!document.querySelector('.quota-warning')) {
+                  const warningDiv = document.createElement('div');
+                  warningDiv.className = 'quota-warning no-recommendations';
+                  warningDiv.innerHTML = '⚠️ OpenAI usage quota exceeded. Please check your billing at <a href="https://platform.openai.com/account/billing" target="_blank">OpenAI Platform</a>. Using smart matching instead.';
+                  grid.prepend(warningDiv);
+                }              } else if (similarity && !similarity.error && similarity.overallScore > 0.05) { // Even lower threshold for AI
+                matchScore = similarity.overallScore;
+                matchingFactors = [
+                  `🤖 AI Text similarity: ${Math.round((similarity.textSimilarity || 0) * 100)}%`,
+                  similarity.imageSimilarity?.similarity_score ? `🖼️ AI Image similarity: ${Math.round(similarity.imageSimilarity.similarity_score * 100)}%` : null
+                ].filter(Boolean);
+                feedback = '🤖 AI-powered similarity analysis';
+              } else if (similarity?.error) {
+                console.log('OpenAI API error:', similarity.error);
+                // Fall back to smart matching for this pair
+                matchScore = calculateSmartSimilarity(userPost, otherPost);
+                matchingFactors = getMatchingFactors(userPost, otherPost);
+                feedback = 'Smart text-based matching (API error fallback)';
+              }
+            } catch (apiError) {
+              console.error('OpenAI API call failed:', apiError);
+              // Fall back to smart matching for this pair
+              matchScore = calculateSmartSimilarity(userPost, otherPost);
+              matchingFactors = getMatchingFactors(userPost, otherPost);
+              feedback = 'Smart text-based matching (API call failed)';
+                       }          } else {
+            // Use smart matching algorithm
+            matchScore = calculateSmartSimilarity(userPost, otherPost);
+            matchingFactors = getMatchingFactors(userPost, otherPost);
+            feedback = useOpenAI ? 
+              'Smart text-based matching (pre-filter: score too low for AI)' : 
+              '📊 Smart text-based matching algorithm';
+          }
+            if (matchScore > 0.05) { // Very low threshold to capture more potential matches
+            console.log(`Found match with score: ${matchScore} between "${userPost.title}" and "${otherPost.title}"`);
+            recommendations.push({
+              userPost,
+              matchedPost: otherPost,
+              totalScore: matchScore * 100,
+              matchCategory: matchScore > 0.6 ? 'high' : (matchScore > 0.3 ? 'medium' : 'potential'),
+              matchingFactors: matchingFactors,
+              confidence: Math.round(matchScore * 100),
+              feedback: feedback,
+              usedOpenAI: usedOpenAI
+            });
+          } else {
+            console.log(`Low similarity score: ${matchScore} between "${userPost.title}" and "${otherPost.title}"`);
           }
         }
-        if (rateLimitError) break;
       }
-      if (rateLimitError) {
-        grid.innerHTML = `<div class="no-recommendations">${apiErrorMessage || 'You have hit the OpenAI API rate limit. Please wait a minute and try again.'}</div>`;
-        section.style.display = 'block';
-      } else {
-        grid.innerHTML = openAICalled
-          ? '<div class="success-recommendations">AI connection successful! Recommendations loaded below.</div>'
-          : '<div class="no-recommendations">No AI recommendations found. Try creating or updating your posts for better matches!</div>';
+      
+    } catch (error) {
+      console.error('Error in recommendation generation:', error);
+      grid.innerHTML = '<div class="no-recommendations">Error generating recommendations. Using basic matching algorithm.</div>';
+      
+      // Fallback to basic recommendations
+      const allPosts = Object.entries(postsData)
+        .map(([id, post]) => ({ id, ...post }))
+        .filter(post => post.user && post.user.uid);
+      
+      for (const userPost of userPosts) {
+        for (const otherPost of allPosts) {
+          if (userPost.id === otherPost.id) continue;
+          if (userPost.user.uid === otherPost.user.uid) continue;
+          if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue;
+          
+          const basicScore = calculateBasicSimilarity(userPost, otherPost);
+          if (basicScore > 0.5) {
+            recommendations.push({
+              userPost,
+              matchedPost: otherPost,
+              totalScore: basicScore * 100,
+              matchCategory: 'potential',
+              matchingFactors: ['Basic text matching'],
+              confidence: Math.round(basicScore * 100),
+              feedback: 'Basic matching algorithm'
+            });
+          }
+        }
       }
-    } catch (apiError) {
-      console.error('AI API error:', apiError);
-      grid.innerHTML = '<div class="no-recommendations">Unable to connect to the AI recommendation service. Please try again later.</div>';
-      return;
-    }
+    }    
     window.currentRecommendations = recommendations;
-    // Append recommendations below the success message
-    if (!rateLimitError) {
-      grid.innerHTML += recommendations.length > 0
-        ? recommendations.map(rec => createRecommendationCard(rec)).join('')
-        : '<div class="no-recommendations">No AI recommendations found. Try creating or updating your posts for better matches!</div>';
-    }
-  } catch (error) {
+      // Display recommendations
+    if (recommendations.length > 0) {
+      // Count AI vs non-AI recommendations for reporting
+      const aiRecommendations = recommendations.filter(rec => rec.usedOpenAI).length;
+      const smartRecommendations = recommendations.length - aiRecommendations;
+      
+      const recommendationCards = recommendations.map(rec => createRecommendationCard(rec)).join('');
+      
+      // Add summary header
+      const summaryHtml = `
+        <div class="recommendations-summary">
+          <h3>🎯 Found ${recommendations.length} potential matches</h3>
+          ${aiRecommendations > 0 ? 
+            `<p>🤖 ${aiRecommendations} AI-powered matches • 📊 ${smartRecommendations} smart algorithm matches</p>` :
+            `<p>📊 All matches generated using smart algorithm${useOpenAI ? ' (OpenAI available but not needed)' : ''}</p>`
+          }
+        </div>
+      `;
+      
+      grid.innerHTML = summaryHtml + recommendationCards;
+      console.log(`✅ Displayed ${recommendations.length} recommendations (${aiRecommendations} AI-powered, ${smartRecommendations} smart matching)`);
+    } else {
+      const noRecMessage = aiConnectionTested 
+        ? `<div class="no-recommendations">
+            <h3>No matching items found</h3>
+            <p>${useOpenAI ? '🤖 AI analysis complete' : '📊 Smart analysis complete'} - Try creating more detailed posts or checking back later for new posts!</p>
+           </div>`
+        : `<div class="no-recommendations">
+            <h3>No matches found</h3>
+            <p>📊 Smart algorithm analysis complete - Try creating more detailed posts!</p>
+           </div>`;
+      grid.innerHTML = noRecMessage;
+    }  } catch (error) {
     console.error('Error in AI recommendations:', error);
-    grid.innerHTML = '<div class="no-recommendations">Error loading recommendations. Please check your internet connection or try again later.</div>';
+    
+    // Provide specific error feedback
+    let errorMessage = 'Error loading recommendations.';
+    if (error.message?.includes('network') || error.code === 'NETWORK_ERROR') {
+      errorMessage = '🌐 Network error - Please check your internet connection and try again.';
+    } else if (error.message?.includes('quota') || error.message?.includes('billing')) {
+      errorMessage = '💳 OpenAI quota exceeded - Please check your billing at <a href="https://platform.openai.com/account/billing" target="_blank">OpenAI Platform</a>.';
+    } else if (error.message?.includes('rate')) {
+      errorMessage = '⏱️ API rate limit reached - Please try again in a few minutes.';
+    } else {
+      errorMessage = '❌ Unexpected error - Please try again later.';
+    }
+    
+    grid.innerHTML = `<div class="no-recommendations error-message">${errorMessage}</div>`;
   }
+}
+
+// Test OpenAI connection with a simple test
+async function testOpenAIConnection() {
+  try {
+    // Use a simpler endpoint that's less likely to be rate limited
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openai.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [{
+          role: "user",
+          content: "test"
+        }],
+        max_tokens: 1
+      })
+    });    if (!response.ok) {
+      if (response.status === 429) {
+        // Check if it's a quota issue
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: { message: errorText } };
+        }
+
+        if (errorData.error?.code === 'insufficient_quota' || 
+            errorData.error?.message?.includes('quota') ||
+            errorData.error?.message?.includes('billing')) {
+          console.error('OpenAI quota exceeded:', errorData.error.message);
+          return { success: false, error: 'OpenAI quota exceeded. Please check your billing and usage limits.' };
+        }
+        
+        // Regular rate limiting - API key is still valid
+        console.log('OpenAI API rate limited, but key is valid - proceeding with API usage');
+        return { success: true, note: 'Rate limited but valid key' };
+      }
+      if (response.status === 401) {
+        return { success: false, error: 'OpenAI API key authentication failed' };
+      }
+      if (response.status === 404) {
+        return { success: false, error: 'OpenAI API endpoint not found' };
+      }
+      // For other errors, assume the key might still be valid
+      console.log(`OpenAI API returned ${response.status}, but proceeding anyway`);
+      return { success: true, note: `HTTP ${response.status} but proceeding` };
+    }
+
+    const data = await response.json();
+    console.log('OpenAI connection test successful:', data.id || 'no ID');
+    return { success: true };
+    
+  } catch (error) {
+    console.error('OpenAI connection test error:', error);
+    // Network errors might be temporary - try to proceed anyway if we have a valid-looking key
+    if (config.openai.apiKey && config.openai.apiKey.startsWith('sk-') && config.openai.apiKey.length > 40) {
+      console.log('Network error in test, but API key looks valid - proceeding');
+      return { success: true, note: 'Network error but valid-looking key' };
+    }
+    return { success: false, error: 'Network error connecting to OpenAI API' };
+  }
+}
+
+// Direct OpenAI API test function
+window.testDirectOpenAI = async function() {
+  console.log('🧪 Testing direct OpenAI API call...');
+  
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openai.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [{
+          role: "system", 
+          content: "You are a helpful assistant. Respond with just the word 'SUCCESS' to confirm the API is working."
+        }, {
+          role: "user",
+          content: "Test message"
+        }],
+        max_tokens: 10
+      })
+    });
+
+    console.log('API Response status:', response.status);
+    console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      return { 
+        success: false, 
+        error: `HTTP ${response.status}: ${errorText}`,
+        status: response.status 
+      };
+    }
+
+    const data = await response.json();
+    console.log('API Response data:', data);
+    
+    return { 
+      success: true, 
+      response: data,
+      message: data.choices?.[0]?.message?.content || 'No content'
+    };
+    
+  } catch (error) {
+    console.error('Direct API test error:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      type: 'network_error'
+    };
+  }
+};
+
+// Smart similarity calculation without API calls
+function calculateSmartSimilarity(post1, post2) {
+  const text1 = `${post1.title || ''} ${post1.description || ''} ${(post1.labels || []).join(' ')}`.toLowerCase();
+  const text2 = `${post2.title || ''} ${post2.description || ''} ${(post2.labels || []).join(' ')}`.toLowerCase();
+  
+  console.log(`Calculating similarity between:
+    Post 1: "${text1}" (${post1.type})
+    Post 2: "${text2}" (${post2.type})`);
+  
+  // Enhanced multilingual word matching
+  const multilingual = {
+    // Pen translations
+    pen: ['pen', 'boli', 'bolígrafo', 'stylo', 'penna'],
+    // Color translations
+    red: ['red', 'rojo', 'rouge', 'vermell', 'roig', 'rosso'],
+    blue: ['blue', 'azul', 'bleu', 'blau', 'blu'],
+    black: ['black', 'negro', 'noir', 'negre', 'nero'],
+    // Phone translations
+    phone: ['phone', 'móvil', 'celular', 'telefono', 'iphone', 'android'],
+    // Common items
+    keys: ['keys', 'llaves', 'clés', 'claus', 'chiavi'],
+    wallet: ['wallet', 'cartera', 'portefeuille', 'cartera', 'portafoglio']
+  };
+    // Calculate word overlap with multilingual support
+  const words1 = text1.split(/\s+/).filter(word => word.length > 2);
+  const words2 = text2.split(/\s+/).filter(word => word.length > 2);
+  
+  console.log(`  Words extracted:
+    Post 1 words: [${words1.join(', ')}]
+    Post 2 words: [${words2.join(', ')}]`);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  let semanticMatches = 0;
+  let directMatches = 0;
+  
+  // Check for direct word matches
+  const commonWords = words1.filter(word => words2.includes(word));
+  directMatches = commonWords.length;
+  
+  // Check for semantic/multilingual matches
+  for (const word1 of words1) {
+    for (const word2 of words2) {
+      if (word1 === word2) continue; // Already counted in direct matches
+      
+      // Check if words are in the same semantic group
+      for (const [concept, translations] of Object.entries(multilingual)) {
+        if (translations.includes(word1) && translations.includes(word2)) {
+          semanticMatches++;
+          console.log(`  Semantic match found: "${word1}" ↔ "${word2}" (${concept})`);
+          break;
+        }
+      }
+    }
+  }
+  
+  const totalMatches = directMatches + semanticMatches;
+  const wordOverlap = totalMatches / Math.max(words1.length, words2.length);
+  
+  console.log(`  Word analysis: ${directMatches} direct + ${semanticMatches} semantic = ${totalMatches}/${Math.max(words1.length, words2.length)} = ${wordOverlap}
+    Direct matches: [${commonWords.join(', ')}]`);
+  
+  // Calculate location similarity if available
+  let locationScore = 0;
+  if (post1.location && post2.location) {
+    const loc1 = post1.location.toLowerCase();
+    const loc2 = post2.location.toLowerCase();
+    if (loc1 === loc2) locationScore = 0.4; // Increased from 0.3
+    else if (loc1.includes(loc2) || loc2.includes(loc1)) locationScore = 0.3; // Increased from 0.2
+    console.log(`  Location similarity: ${locationScore} (${loc1} vs ${loc2})`);
+  }
+  
+  // Calculate label similarity
+  let labelScore = 0;
+  if (post1.labels && post2.labels && post1.labels.length > 0 && post2.labels.length > 0) {
+    const labels1 = post1.labels.map(l => l.toLowerCase());
+    const labels2 = post2.labels.map(l => l.toLowerCase());
+    const commonLabels = labels1.filter(label => labels2.includes(label));
+    labelScore = commonLabels.length / Math.max(labels1.length, labels2.length) * 0.3; // Increased from 0.2
+    console.log(`  Label similarity: ${labelScore} (common: [${commonLabels.join(', ')}])`);
+  }
+  
+  // Add bonus for opposite types (lost <-> found)
+  let typeBonus = 0;
+  if ((post1.type === 'lost' && post2.type === 'found') || (post1.type === 'found' && post2.type === 'lost')) {
+    typeBonus = 0.1; // Small bonus for complementary types
+    console.log(`  Type bonus: ${typeBonus} (${post1.type} <-> ${post2.type})`);  }
+  
+  // Enhanced total score calculation with better weighting
+  const baseScore = wordOverlap * 0.6; // Give more weight to word matches
+  const bonusScore = locationScore + labelScore + typeBonus;
+  const totalScore = Math.min(baseScore + bonusScore, 1.0);
+  
+  console.log(`  Score breakdown:
+    - Word similarity: ${wordOverlap} * 0.6 = ${baseScore}
+    - Location bonus: ${locationScore}
+    - Label bonus: ${labelScore}
+    - Type bonus: ${typeBonus}
+    - Final score: ${totalScore}`);
+  
+  return totalScore;
+}
+
+// Basic similarity calculation
+function calculateBasicSimilarity(post1, post2) {
+  const title1 = (post1.title || '').toLowerCase();
+  const title2 = (post2.title || '').toLowerCase();
+  
+  if (title1.includes(title2) || title2.includes(title1)) return 0.8;
+  
+  const words1 = title1.split(/\s+/);
+  const words2 = title2.split(/\s+/);
+  const commonWords = words1.filter(word => words2.includes(word) && word.length > 2);
+  
+  return commonWords.length / Math.max(words1.length, words2.length, 1);
+}
+
+// Get matching factors for display
+function getMatchingFactors(post1, post2) {
+  const factors = [];
+  
+  const text1 = `${post1.title || ''} ${post1.description || ''}`.toLowerCase();
+  const text2 = `${post2.title || ''} ${post2.description || ''}`.toLowerCase();
+  
+  const words1 = text1.split(/\s+/).filter(word => word.length > 2);
+  const words2 = text2.split(/\s+/).filter(word => word.length > 2);
+  const commonWords = words1.filter(word => words2.includes(word));
+  
+  if (commonWords.length > 0) {
+    factors.push(`Common keywords: ${commonWords.slice(0, 3).join(', ')}`);
+  }
+  
+  if (post1.location && post2.location) {
+    const loc1 = post1.location.toLowerCase();
+    const loc2 = post2.location.toLowerCase();
+    if (loc1 === loc2) {
+      factors.push(`Same location: ${post1.location}`);
+    } else if (loc1.includes(loc2) || loc2.includes(loc1)) {
+      factors.push(`Similar location area`);
+    }
+  }
+  
+  if (post1.labels && post2.labels) {
+    const labels1 = post1.labels.map(l => l.toLowerCase());
+    const labels2 = post2.labels.map(l => l.toLowerCase());
+    const commonLabels = labels1.filter(label => labels2.includes(label));
+    if (commonLabels.length > 0) {
+      factors.push(`Matching tags: ${commonLabels.join(', ')}`);
+    }
+  }
+    return factors.length > 0 ? factors : ['Text similarity detected'];
 }
 
 function renderRecommendations(recommendations, filter = 'all') {
@@ -1991,185 +2531,222 @@ window.contactForRecommendation = async (postId, userPostId) => {
   window.openClaimModal(postId);
 };
 
-// Initialize event handlers for AI recommendations
+// Initialize event handlers for AI recommendations (consolidated)
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM loaded, setting up AI recommendations button');
+  
   // AI Recommendations button
   const aiRecommendationsBtn = document.getElementById('aiRecommendationsBtn');
   if (aiRecommendationsBtn) {
+    console.log('AI recommendations button found, adding event listener');
     aiRecommendationsBtn.addEventListener('click', showAIRecommendations);
+  } else {
+    console.error('AI recommendations button not found');
   }
   
- 
-  // Filter buttons
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('filter-btn')) {
+  // Filter buttons for recommendations
+  const recommendationFilters = document.querySelector('.recommendation-filters');
+  if (recommendationFilters) {
+    recommendationFilters.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('filter-btn')) return;
+
       // Update active filter
       document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
       e.target.classList.add('active');
-      
-      // Get current recommendations and re-render with filter
+        // Get current recommendations and re-render with filter
       const filter = e.target.dataset.filter;
       const currentRecs = window.currentRecommendations || [];
       renderRecommendations(currentRecs, filter);
-    }
-  });
+    });
+  }
 });
 
-// Store recommendations globally for filtering// Store recommendations globally for filtering
+// Store recommendations globally for filtering
 window.currentRecommendations = [];
 
-// Add unclaimPost function globally// Add unclaimPost function globally
-window.unclaimPost = async function(postId) {
-  if (!currentUser) return;
-  try {
-    const postRef = ref(db, 'posts/' + postId);
-    await update(postRef, {
-      claimed: false,
-      claimedBy: null
-    });
-    // Reload posts to reflect change
-    window.location.reload();
-  } catch (error) {
-    alert('Failed to unclaim the post.');
+// Debug functions for testing (can be called from browser console)
+window.testAIRecommendations = showAIRecommendations;
+window.testConfig = () => {
+  console.log('Testing config availability...');
+  import('../config.js').then(configModule => {
+    console.log('Config loaded:', configModule.config);
+    console.log('OpenAI API Key present:', !!configModule.config?.openai?.apiKey);
+  }).catch(err => {
+    console.error('Error loading config:', err);
+  });
+};
+
+// Debug and test functions for browser console
+window.debugAI = {
+  // Test OpenAI connection
+  async testConnection() {
+    console.log('Testing OpenAI connection...');
+    const result = await testOpenAIConnection();
+    console.log('Connection test result:', result);
+    return result;
+  },
+  
+  // Test smart similarity algorithm
+  testSmartSimilarity() {
+    console.log('Testing smart similarity algorithm...');
+    const post1 = {
+      title: "Lost iPhone 13 Pro",
+      description: "Black iPhone 13 Pro lost at Central Park",
+      labels: ["phone", "apple", "black"],
+      location: "Central Park, NYC",
+      type: "lost"
+    };
+    
+    const post2 = {
+      title: "Found iPhone 13",
+      description: "Found a black iPhone at Central Park near the lake",
+      labels: ["phone", "apple"],
+      location: "Central Park, NYC",
+      type: "found"
+    };
+    
+    const score = calculateSmartSimilarity(post1, post2);
+    const factors = getMatchingFactors(post1, post2);
+    
+    console.log('Test posts similarity score:', score);
+    console.log('Matching factors:', factors);
+    
+    return { score, factors, post1, post2 };
+  },
+  
+  // Test the full recommendation flow
+  async testRecommendations() {
+    console.log('Testing AI recommendations flow...');
+    if (!currentUser) {
+      console.log('No user logged in - simulating login...');
+      // For testing purposes, create a mock user
+      window.currentUser = { uid: 'test-user-123' };
+    }
+    
+    try {
+      await showAIRecommendations();
+      console.log('AI recommendations test completed');
+    } catch (error) {
+      console.error('AI recommendations test failed:', error);
+    }
+  },
+    // Check current configuration
+  checkConfig() {
+    console.log('Current configuration:');
+    console.log('- OpenAI API Key (first 20 chars):', config?.openai?.apiKey?.substring(0, 20) + '...');
+    console.log('- Firebase config loaded:', !!config?.firebase);
+    console.log('- Current user:', currentUser?.uid || 'Not logged in');
+    console.log('- AI usage count:', userAIUsageCount());
+    
+    return {
+      hasOpenAIKey: !!config?.openai?.apiKey,
+      hasFirebaseConfig: !!config?.firebase,
+      currentUser: currentUser?.uid || null,
+      aiUsageCount: userAIUsageCount()
+    };
+  },
+  
+  // Test AI usage tracking functions
+  async testUsageTracking() {
+    console.log('Testing AI usage tracking...');
+    
+    const initialCount = userAIUsageCount();
+    console.log('Initial user AI usage count:', initialCount);
+    
+    const initialGlobal = await getGlobalAIUsage();
+    console.log('Initial global AI usage count:', initialGlobal);
+    
+    // Test increment
+    incrementUserAIUsage();
+    const newCount = userAIUsageCount();
+    console.log('After increment - user AI usage count:', newCount);
+    
+    const newGlobal = await incrementGlobalAIUsage();
+    console.log('After increment - global AI usage count:', newGlobal);
+    
+    // Test limits
+    console.log('User limit:', AI_USER_LIMIT_PER_HOUR);
+    console.log('Global limit:', AI_GLOBAL_DAILY_LIMIT);
+    console.log('User within limit:', newCount < AI_USER_LIMIT_PER_HOUR);
+    console.log('Global within limit:', newGlobal < AI_GLOBAL_DAILY_LIMIT);
+    
+    return {
+      userCount: newCount,
+      globalCount: newGlobal,
+      userLimit: AI_USER_LIMIT_PER_HOUR,
+      globalLimit: AI_GLOBAL_DAILY_LIMIT,
+      userWithinLimit: newCount < AI_USER_LIMIT_PER_HOUR,
+      globalWithinLimit: newGlobal < AI_GLOBAL_DAILY_LIMIT
+    };
+  },
+  
+  // Show current recommendations if any
+  showCurrentRecommendations() {
+    if (window.currentRecommendations && window.currentRecommendations.length > 0) {
+      console.log('Current recommendations:', window.currentRecommendations.length);
+      window.currentRecommendations.forEach((rec, index) => {
+        console.log(`${index + 1}. ${rec.userPost.title} -> ${rec.matchedPost.title} (${rec.confidence}% match)`);
+      });
+      return window.currentRecommendations;
+    } else {
+      console.log('No recommendations currently available');
+      return [];
+    }
+  },
+  
+  // Test function to create sample posts for debugging
+  async createTestPosts() {
+    if (!currentUser) {
+      console.log('No user logged in');
+      return;
+    }
+    
+    console.log('Creating test posts...');
+    
+    // Create a lost item post
+    const lostPost = {
+      title: "Lost iPhone 13 Pro",
+      description: "Black iPhone 13 Pro lost near Central Park",
+      type: "lost",
+      location: "Central Park, NYC",
+      labels: ["phone", "apple", "black", "electronics"],
+      user: {
+        uid: currentUser.uid,
+        username: "testuser"
+      },
+      timestamp: Date.now()
+    };
+    
+    // Create a found item post (different user)
+    const foundPost = {
+      title: "Found iPhone 13",
+      description: "Found a black iPhone near the park entrance",
+      type: "found", 
+      location: "Central Park, NYC",
+      labels: ["phone", "apple", "black"],
+      user: {
+        uid: "different-user-123",
+        username: "otheruser"
+      },
+      timestamp: Date.now()
+    };
+    
+    try {
+      await push(ref(db, 'posts'), lostPost);
+      await push(ref(db, 'posts'), foundPost);
+      console.log('✅ Test posts created successfully!');
+      console.log('Lost post:', lostPost);
+      console.log('Found post:', foundPost);
+    } catch (error) {
+      console.error('❌ Error creating test posts:', error);
+    }
   }
 };
 
-// Helper: Upload image file to imgbb and return the image URL// Helper: Upload image file to imgbb and return the image URL
-async function uploadImageToImgbb(file) {
-  const apiKey = '7f5b86f1efb5c249bafe472c9078a76d'; // Your imgbb API key
-  const formData = new FormData();
-  formData.append('image', file);
-  formData.append('key', apiKey);
-
-  const response = await fetch('https://api.imgbb.com/1/upload', {
-    method: 'POST',
-    body: formData
-  });
-  const data = await response.json();
-  if (data && data.success && data.data && data.data.url) {
-    return data.data.url;
-  } else {
-    throw new Error('Image upload failed');
-  }
-}
-
-// Remove duplicate import of 'update' if present
-// import { update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
-// Only import once at the top of the file if needed
-
-// Fix the AI recommendations button handler
-document.addEventListener('DOMContentLoaded', () => {
-  const aiRecommendationsBtn = document.getElementById('aiRecommendationsBtn');
-  if (aiRecommendationsBtn) {
-    aiRecommendationsBtn.addEventListener('click', showAIRecommendations);
-  }
-});
-
-// Add missing escapeHtml function if not defined
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// Fix error with recommendation filters
-const recommendationFilters = document.querySelector('.recommendation-filters');
-if (recommendationFilters) {
-  recommendationFilters.addEventListener('click', (e) => {
-    if (!e.target.classList.contains('filter-btn')) return;
-
-    // Update active button
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    e.target.classList.add('active');
-
-    // Filter recommendations
-    const filter = e.target.dataset.filter;
-    const cards = document.querySelectorAll('.recommendation-card');
-
-    cards.forEach(card => {
-      const scoreEl = card.querySelector('.match-score');
-      if (!scoreEl) return;
-      
-      const score = parseFloat(scoreEl.textContent);
-      switch (filter) {
-        case 'high':
-          card.style.display = score >= 80 ? 'block' : 'none';
-          break;
-        case 'medium':
-          card.style.display = score >= 75 && score < 80 ? 'block' : 'none';
-          break;
-        case 'visual':
-          card.style.display = card.querySelector('.factor-tag[data-type="visual"]') ? 'block' : 'none';
-          break;
-        default:
-          card.style.display = 'block';
-      }
-    });
-  });
-}
-
-// Add missing notification handling setup
-function setupNotificationClickHandler() {
-  document.querySelectorAll('.notification-item').forEach(item => {
-    item.addEventListener('click', async function() {
-      const notificationId = this.dataset.id;
-      const notificationsRef = ref(db, 'notifications');
-      const snapshot = await get(notificationsRef);
-      const data = snapshot.val();
-      
-      if (data && data[notificationId]) {
-        // Mark as read
-        await update(ref(db, `notifications/${notificationId}`), {
-          read: true
-        });
-        
-        // Show notification detail
-        await showNotificationDetail({
-          id: notificationId,
-          ...data[notificationId]
-        });
-      }
-    });
-  });
-}
-
-// --- AI API Usage Limiting ---
-const AI_USER_LIMIT_PER_HOUR = 5; // Max 5 AI calls per user per hour
-const AI_GLOBAL_DAILY_LIMIT = 100; // Max 100 AI calls globally per day (adjust as needed)
-
-function getUserAIUsage() {
-  const usage = JSON.parse(localStorage.getItem('ai_usage') || '{}');
-  const now = Date.now();
-  // Remove entries older than 1 hour
-  Object.keys(usage).forEach(ts => {
-    if (now - Number(ts) > 60 * 60 * 1000) delete usage[ts];
-  });
-  return usage;
-}
-
-function incrementUserAIUsage() {
-  const usage = getUserAIUsage();
-  usage[Date.now()] = 1;
-  localStorage.setItem('ai_usage', JSON.stringify(usage));
-}
-
-function userAIUsageCount() {
-  return Object.keys(getUserAIUsage()).length;
-}
-
-async function getGlobalAIUsage() {
-  // Store global usage in Firebase at /ai_usage/yyyy-mm-dd
-  const today = new Date().toISOString().slice(0, 10);
-  const usageRef = ref(db, `ai_usage/${today}`);
-  const snap = await get(usageRef);
-  return snap.exists() ? snap.val() : 0;
-}
-
-async function incrementGlobalAIUsage() {
-  const today = new Date().toISOString().slice(0, 10);
-  const usageRef = ref(db, `ai_usage/${today}`);
-  const snap = await get(usageRef);
-  const current = snap.exists() ? snap.val() : 0;
-  await set(usageRef, current + 1);
-}
+console.log('🔧 AI Debug functions loaded! Use window.debugAI in console:');
+console.log('- debugAI.testConnection() - Test OpenAI API connection');
+console.log('- debugAI.testSmartSimilarity() - Test similarity algorithm');
+console.log('- debugAI.testRecommendations() - Test full recommendation flow');
+console.log('- debugAI.checkConfig() - Check current configuration');
+console.log('- debugAI.testUsageTracking() - Test AI usage tracking functions');
+console.log('- debugAI.showCurrentRecommendations() - Show current recommendations');

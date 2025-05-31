@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: #f5f6fa;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .success { border-color: #4caf50; background: #f1f8e9; }
+        .error { border-color: #f44336; background: #ffebee; }
+        .warning { border-color: #ff9800; background: #fff3e0; }
+        .loading { border-color: #2196f3; background: #e3f2fd; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem 0;
+        }
+        button:hover { background: #5a6fd8; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        pre {
+            background: #f5f5f5;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 OpenAI API Connection Test</h1>
+        <p>This page tests the OpenAI API connection and similarity analysis functions.</p>
+        
+        <div id="connectionTest" class="test-section">
+            <h3>1. Connection Test</h3>
+            <button onclick="testConnection()">Test OpenAI Connection</button>
+            <div id="connectionResult"></div>
+        </div>
+
+        <div id="similarityTest" class="test-section">
+            <h3>2. Similarity Analysis Test</h3>
+            <button onclick="testSimilarity()">Test Similarity Analysis</button>
+            <div id="similarityResult"></div>
+        </div>
+
+        <div id="fullTest" class="test-section">
+            <h3>3. Full Recommendation Test</h3>
+            <button onclick="testFullRecommendations()">Test Full Recommendations</button>
+            <div id="fullResult"></div>
+        </div>
+
+        <div id="debugInfo" class="test-section">
+            <h3>4. Debug Information</h3>
+            <button onclick="showDebugInfo()">Show Debug Info</button>
+            <div id="debugResult"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { analyzeSimilarity } from './openai-service.js';
+        import { config } from '../config.js';
+
+        // Make functions available globally
+        window.analyzeSimilarity = analyzeSimilarity;
+        window.config = config;
+
+        window.testConnection = async function() {
+            const resultDiv = document.getElementById('connectionResult');
+            resultDiv.innerHTML = '<div class="loading">🔄 Testing connection...</div>';
+            
+            try {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${config.openai.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-3.5-turbo",
+                        messages: [{ role: "user", content: "Hello" }],
+                        max_tokens: 5
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            ✅ <strong>Connection Successful!</strong><br>
+                            Model: ${data.model}<br>
+                            Response ID: ${data.id}
+                        </div>
+                    `;
+                } else {
+                    const errorData = await response.text();
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            ❌ <strong>Connection Failed</strong><br>
+                            Status: ${response.status}<br>
+                            Error: ${errorData}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        ❌ <strong>Network Error</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        };
+
+        window.testSimilarity = async function() {
+            const resultDiv = document.getElementById('similarityResult');
+            resultDiv.innerHTML = '<div class="loading">🔄 Testing similarity analysis...</div>';
+            
+            const post1 = {
+                title: "Lost iPhone 13 Pro",
+                description: "Black iPhone 13 Pro lost at Central Park",
+                labels: ["phone", "apple", "black"]
+            };
+
+            const post2 = {
+                title: "Found black phone",
+                description: "Found a black iPhone at Central Park near the lake",
+                labels: ["phone", "apple"]
+            };
+
+            try {
+                const result = await analyzeSimilarity(post1, post2);
+                
+                if (result.error) {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            ❌ <strong>Similarity Test Failed</strong><br>
+                            Error: ${result.error}<br>
+                            Message: ${result.message || 'No message'}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            ✅ <strong>Similarity Analysis Successful!</strong><br>
+                            Overall Score: ${result.overallScore}<br>
+                            Text Similarity: ${result.textSimilarity}<br>
+                            <pre>${JSON.stringify(result, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        ❌ <strong>Similarity Test Error</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        };
+
+        window.testFullRecommendations = async function() {
+            const resultDiv = document.getElementById('fullResult');
+            resultDiv.innerHTML = '<div class="loading">🔄 Testing full recommendation system...</div>';
+            
+            // This would test the full recommendation flow
+            resultDiv.innerHTML = `
+                <div class="warning">
+                    ⚠️ <strong>Full Test Note</strong><br>
+                    This test requires the main recommendation system to be running.<br>
+                    Use the AI Recommendations button on the main page to test the full system.
+                </div>
+            `;
+        };
+
+        window.showDebugInfo = function() {
+            const resultDiv = document.getElementById('debugResult');
+            resultDiv.innerHTML = `
+                <div class="test-section">
+                    <strong>Configuration:</strong><br>
+                    OpenAI API Key Present: ${config?.openai?.apiKey ? 'Yes (' + config.openai.apiKey.substring(0, 20) + '...)' : 'No'}<br>
+                    Firebase Config: ${config?.firebase ? 'Present' : 'Missing'}<br>
+                    <br>
+                    <strong>Available Functions:</strong><br>
+                    - analyzeSimilarity: ${typeof window.analyzeSimilarity}<br>
+                    - config: ${typeof window.config}<br>
+                    <br>
+                    <strong>Browser Console Commands:</strong><br>
+                    - <code>testConnection()</code><br>
+                    - <code>testSimilarity()</code><br>
+                    - <code>window.debugAI</code> (available on main page)
+                </div>
+            `;
+        };
+
+        // Auto-show debug info on load
+        setTimeout(() => {
+            showDebugInfo();
+        }, 500);
+    </script>
+</body>
+</html>
