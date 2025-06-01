@@ -1,7 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 import { getDatabase, ref, push, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
-import { analyzeSimilarity } from './openai-service.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBmS-i8N6sFOB4khvIpX-_fFN3ITebSS0g",
@@ -20,6 +19,155 @@ const db = getDatabase(app);
 
 let currentUser = null;
 let postType = 'lost'; // Default post type
+
+// Multilingual dictionary for semantic matching
+const multilingualDictionary = {
+  // Electronics
+  'phone': ['telefono', 'movil', 'movil', 'celular', 'telefon'],
+  'telefono': ['phone', 'movil', 'celular', 'telefon'],
+  'movil': ['phone', 'telefono', 'celular', 'telefon'],
+  'laptop': ['portatil', 'ordinador', 'computadora'],
+  'portatil': ['laptop', 'ordinador', 'computadora'],
+  'headphones': ['auriculares', 'cascos', 'auriculars'],
+  'auriculares': ['headphones', 'cascos', 'auriculars'],
+  'charger': ['cargador', 'carregador'],
+  'cargador': ['charger', 'carregador'],
+  
+  // Personal items
+  'bag': ['bolso', 'bolsa', 'mochila', 'motxilla'],
+  'bolso': ['bag', 'bolsa', 'mochila', 'motxilla'],
+  'mochila': ['bag', 'bolso', 'bolsa', 'motxilla'],
+  'motxilla': ['bag', 'bolso', 'mochila', 'bolsa'],
+  'wallet': ['cartera', 'billetera', 'monedero'],
+  'cartera': ['wallet', 'billetera', 'monedero'],
+  'billetera': ['wallet', 'cartera', 'monedero'],
+  'keys': ['llaves', 'claves', 'claus'],
+  'llaves': ['keys', 'claves', 'claus'],
+  'claus': ['keys', 'llaves', 'claves'],
+  'watch': ['reloj', 'montre'],
+  'reloj': ['watch', 'montre'],
+  'glasses': ['gafas', 'anteojos', 'ulleres'],
+  'gafas': ['glasses', 'anteojos', 'ulleres'],
+  'ulleres': ['glasses', 'gafas', 'anteojos'],
+  
+  // Books and study materials
+  'book': ['libro', 'llibre', 'livre'],
+  'libro': ['book', 'llibre', 'livre'],
+  'llibre': ['book', 'libro', 'livre'],
+  'notebook': ['cuaderno', 'libreta', 'quadern'],
+  'cuaderno': ['notebook', 'libreta', 'quadern'],
+  'quadern': ['notebook', 'cuaderno', 'libreta'],
+  
+  // Common descriptive words
+  'lost': ['perdido', 'perdut', 'perdu'],
+  'found': ['encontrado', 'trobat', 'trouvé'],
+  'small': ['pequeño', 'petit', 'petite'],
+  'big': ['grande', 'gran', 'grand'],
+  'new': ['nuevo', 'nou', 'nouveau'],
+  'old': ['viejo', 'vell', 'vieux']
+};
+
+// Calculate local similarity between two posts
+function calculateLocalSimilarity(post1, post2) {
+  const scores = {
+    labelMatch: 0,
+    semanticMatch: 0,
+    textSimilarity: 0,
+    locationMatch: 0,
+    total: 0
+  };
+  
+  // Get text content for both posts
+  const text1 = `${post1.title || ''} ${post1.description || ''}`.toLowerCase();
+  const text2 = `${post2.title || ''} ${post2.description || ''}`.toLowerCase();
+  const labels1 = (post1.labels || []).map(l => l.toLowerCase());
+  const labels2 = (post2.labels || []).map(l => l.toLowerCase());
+  
+  // 1. Direct label matching (30% weight)
+  const directMatches = labels1.filter(l => 
+    l !== 'lost' && l !== 'found' && labels2.includes(l)
+  );
+  scores.labelMatch = directMatches.length > 0 ? 0.3 : 0;
+  
+  // 2. Semantic/multilingual matching (40% weight)
+  let semanticMatches = 0;
+  for (const label1 of labels1) {
+    if (label1 === 'lost' || label1 === 'found') continue;
+    
+    // Check direct translations
+    const translations = multilingualDictionary[label1] || [];
+    const hasTranslation = labels2.some(l2 => translations.includes(l2));
+    if (hasTranslation) semanticMatches++;
+    
+    // Check if any label2 translates to label1
+    for (const label2 of labels2) {
+      if (label2 === 'lost' || label2 === 'found') continue;
+      const reverseTranslations = multilingualDictionary[label2] || [];
+      if (reverseTranslations.includes(label1)) {
+        semanticMatches++;
+        break;
+      }
+    }
+  }
+  
+  // Also check text content for semantic matches
+  for (const [word, translations] of Object.entries(multilingualDictionary)) {
+    if (text1.includes(word)) {
+      for (const translation of translations) {
+        if (text2.includes(translation)) {
+          semanticMatches++;
+          break;
+        }
+      }
+    }
+  }
+  
+  scores.semanticMatch = semanticMatches > 0 ? Math.min(semanticMatches * 0.1, 0.4) : 0;
+  
+  // 3. Text similarity (20% weight)
+  const words1 = text1.split(/\s+/).filter(w => w.length > 2);
+  const words2 = text2.split(/\s+/).filter(w => w.length > 2);
+  const commonWords = words1.filter(w => words2.includes(w));
+  
+  if (words1.length > 0 && words2.length > 0) {
+    const similarity = commonWords.length / Math.max(words1.length, words2.length);
+    scores.textSimilarity = similarity * 0.2;
+  }
+  
+  // 4. Location proximity (10% weight)
+  if (post1.location && post2.location) {
+    const loc1 = post1.location.toLowerCase();
+    const loc2 = post2.location.toLowerCase();
+    
+    // Exact location match
+    if (loc1 === loc2) {
+      scores.locationMatch = 0.1;
+    }
+    // Partial location match
+    else if (loc1.includes(loc2) || loc2.includes(loc1)) {
+      scores.locationMatch = 0.05;
+    }
+    // Common location keywords
+    else {
+      const locationKeywords = ['campus', 'biblioteca', 'library', 'cafeteria', 'aula', 'classroom'];
+      const hasCommonLocation = locationKeywords.some(keyword => 
+        loc1.includes(keyword) && loc2.includes(keyword)
+      );
+      if (hasCommonLocation) scores.locationMatch = 0.03;
+    }
+  }
+  
+  // Calculate total score
+  scores.total = scores.labelMatch + scores.semanticMatch + scores.textSimilarity + scores.locationMatch;
+  
+  return {
+    score: scores.total,
+    confidence: Math.round(scores.total * 100),
+    breakdown: scores,
+    directMatches,
+    semanticMatches
+  };
+}
 
 // Check authentication state
 onAuthStateChanged(auth, (user) => {
@@ -134,19 +282,19 @@ postForm.addEventListener('submit', async (e) => {
             otherPost.type === post.type) continue;
 
         try {
-          // Use AI to analyze similarity
-          const similarity = await analyzeSimilarity(post, otherPost);
+          // Use local similarity analysis
+          const similarity = calculateLocalSimilarity(post, otherPost);
           
-          if (similarity.overallScore > 0.7) {
+          if (similarity.confidence >= 70) {
             // Create notification for match
             await push(ref(db, 'notifications'), {
               to: otherPost.user.uid,
-              title: 'AI Found a Potential Match!',
-              message: `Match confidence: ${Math.round(similarity.overallScore * 100)}%\nFor your ${otherPost.type} post: "${otherPost.title}"`,
-              type: 'ai_match',
+              title: 'Found a Potential Match!',
+              message: `Match confidence: ${similarity.confidence}%\nFor your ${otherPost.type} post: "${otherPost.title}"`,
+              type: 'match',
               postId: newPostRef.key,
               matchedWithId: otherPostId,
-              matchConfidence: similarity.overallScore,
+              matchConfidence: similarity.confidence / 100,
               timestamp: Date.now(),
               read: false
             });

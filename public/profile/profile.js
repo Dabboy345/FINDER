@@ -102,6 +102,9 @@ async function sendMessage(text) {
     currentChatId.split('_')[2],
     { chatId: currentChatId }
   );
+  
+  // Reload the page after sending message
+  window.location.reload();
 }
 
 // Event Listeners for Chat
@@ -496,16 +499,47 @@ window.openChat = openChat;
 // Add unclaimPost function globally
 window.unclaimPost = async function(postId) {
   if (!currentUser) return;
+  
+  // Show loading state
+  const unclaimBtn = document.querySelector(`button[onclick="unclaimPost('${postId}')"]`);
+  if (unclaimBtn) {
+    unclaimBtn.disabled = true;
+    unclaimBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Unclaiming...';
+  }
+  
   try {
     const postRef = ref(db, 'posts/' + postId);
     await update(postRef, {
       claimed: false,
       claimedBy: null
     });
-    // Optionally, remove claim from 'claims' node if you want
-    // Reload posts to reflect change
-    loadUserPosts(currentUser);
+
+    // **FIX: Also remove any claim entries for this post and user**
+    const claimsRef = ref(db, 'claims');
+    const claimsSnapshot = await get(claimsRef);
+    const claims = claimsSnapshot.val();
+    
+    if (claims) {
+      const claimEntriesToRemove = Object.entries(claims).filter(([, claim]) => 
+        claim.postId === postId && claim.from.uid === currentUser.uid
+      );
+      
+      for (const [claimId] of claimEntriesToRemove) {
+        await set(ref(db, `claims/${claimId}`), null);
+      }
+    }
+    
+    alert('Item unclaimed successfully!');
+    // The onValue listener should automatically update the UI
+    // No need to reload the page
   } catch (error) {
+    console.error('Error unclaiming post:', error);
     alert('Failed to unclaim the post.');
+    
+    // Restore button state on error
+    if (unclaimBtn) {
+      unclaimBtn.disabled = false;
+      unclaimBtn.innerHTML = '<i class="fas fa-undo"></i> Unclaim';
+    }
   }
 };

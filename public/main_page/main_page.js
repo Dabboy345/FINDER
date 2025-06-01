@@ -1,8 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 import { getDatabase, ref, get, set, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
-import { analyzeSimilarity } from './openai-service.js';
-import { config } from '../config.js';
 
 // Firebase config
 const firebaseConfig = {
@@ -20,9 +18,6 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// Verify config is loaded
-console.log('Config loaded in main_page.js:', !!config?.openai?.apiKey ? 'OpenAI API key present' : 'OpenAI API key missing');
-
 // Global variables
 const postsContainer = document.querySelector(".posts-container");
 let currentUser = null;
@@ -36,95 +31,22 @@ function escapeHtml(text) {
   })[m]);
 }
 
-// AI Usage Tracking Constants
-const AI_USER_LIMIT_PER_HOUR = 10;  // Max AI calls per user per hour
-const AI_GLOBAL_DAILY_LIMIT = 1000; // Max AI calls globally per day
+// Helper: Upload image file to imgbb and return the image URL
+async function uploadImageToImgbb(file) {
+  const apiKey = '7f5b86f1efb5c249bafe472c9078a76d'; // <-- Replace with your imgbb API key
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('key', apiKey);
 
-// AI Usage Tracking Functions
-function userAIUsageCount() {
-  const userId = currentUser?.uid;
-  if (!userId) return 0;
-  
-  const now = Date.now();
-  const oneHourAgo = now - (60 * 60 * 1000); // 1 hour in milliseconds
-  
-  // Get usage from localStorage
-  const usageKey = `ai_usage_${userId}`;
-  const storedUsage = localStorage.getItem(usageKey);
-  
-  if (!storedUsage) return 0;
-  
-  try {
-    const usage = JSON.parse(storedUsage);
-    // Filter out usage older than 1 hour
-    const recentUsage = usage.filter(timestamp => timestamp > oneHourAgo);
-    
-    // Update localStorage with filtered usage
-    localStorage.setItem(usageKey, JSON.stringify(recentUsage));
-    
-    return recentUsage.length;
-  } catch (error) {
-    console.error('Error reading AI usage data:', error);
-    return 0;
-  }
-}
-
-function incrementUserAIUsage() {
-  const userId = currentUser?.uid;
-  if (!userId) return;
-  
-  const now = Date.now();
-  const usageKey = `ai_usage_${userId}`;
-  
-  try {
-    const storedUsage = localStorage.getItem(usageKey);
-    const usage = storedUsage ? JSON.parse(storedUsage) : [];
-    
-    // Add current timestamp
-    usage.push(now);
-    
-    // Clean up old entries (older than 1 hour)
-    const oneHourAgo = now - (60 * 60 * 1000);
-    const recentUsage = usage.filter(timestamp => timestamp > oneHourAgo);
-    
-    localStorage.setItem(usageKey, JSON.stringify(recentUsage));
-    
-    console.log(`AI usage incremented for user ${userId}. Count: ${recentUsage.length}/${AI_USER_LIMIT_PER_HOUR}`);
-  } catch (error) {
-    console.error('Error updating AI usage data:', error);
-  }
-}
-
-async function getGlobalAIUsage() {
-  try {
-    const today = new Date().toDateString();
-    const usageRef = ref(db, `ai_usage_global/${today.replace(/\s/g, '_')}`);
-    const snapshot = await get(usageRef);
-    
-    return snapshot.exists() ? snapshot.val() : 0;
-  } catch (error) {
-    console.error('Error getting global AI usage:', error);
-    return 0;
-  }
-}
-
-async function incrementGlobalAIUsage() {
-  try {
-    const today = new Date().toDateString();
-    const usageRef = ref(db, `ai_usage_global/${today.replace(/\s/g, '_')}`);
-    const snapshot = await get(usageRef);
-    
-    const currentUsage = snapshot.exists() ? snapshot.val() : 0;
-    const newUsage = currentUsage + 1;
-    
-    await set(usageRef, newUsage);
-    
-    console.log(`Global AI usage incremented. Count: ${newUsage}/${AI_GLOBAL_DAILY_LIMIT}`);
-    
-    return newUsage;
-  } catch (error) {
-    console.error('Error updating global AI usage:', error);
-    return 0;
+  const response = await fetch('https://api.imgbb.com/1/upload', {
+    method: 'POST',
+    body: formData
+  });
+  const data = await response.json();
+  if (data && data.success && data.data && data.data.url) {
+    return data.data.url;
+  } else {
+    throw new Error('Image upload failed');
   }
 }
 
@@ -341,16 +263,47 @@ async function unclaimPost(postId) {
     return;
   }
 
+  // Show loading state
+  const unclaimBtn = document.querySelector(`button[onclick*="unclaimPost('${postId}')"]`);
+  if (unclaimBtn) {
+    unclaimBtn.disabled = true;
+    unclaimBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Unclaiming...';
+  }
+
   try {
     const postRef = ref(db, `posts/${postId}`);
     await update(postRef, {
       claimed: false,
       claimedBy: null
     });
+
+    // **FIX: Also remove any claim entries for this post and user**
+    const claimsRef = ref(db, 'claims');
+    const claimsSnapshot = await get(claimsRef);
+    const claims = claimsSnapshot.val();
+    
+    if (claims) {
+      const claimEntriesToRemove = Object.entries(claims).filter(([, claim]) => 
+        claim.postId === postId && claim.from.uid === currentUser.uid
+      );
+      
+      for (const [claimId] of claimEntriesToRemove) {
+        await set(ref(db, `claims/${claimId}`), null);
+      }
+    }
+
     alert("You have unclaimed this item.");
+    // The onValue listener should automatically update the UI
+    // No need to reload the page
   } catch (error) {
     console.error("Error unclaiming item:", error);
     alert("Error unclaiming item. Please try again.");
+    
+    // Restore button state on error
+    if (unclaimBtn) {
+      unclaimBtn.disabled = false;
+      unclaimBtn.innerHTML = '<i class="fas fa-undo"></i> Unclaim';
+    }
   }
 }
 
@@ -360,6 +313,15 @@ let currentClaimPost = null;
 
 // Function to check if user has already claimed a post
 async function hasUserClaimedPost(postId, userId) {
+  // Check if the post is marked as claimed by this user
+  const postSnapshot = await get(ref(db, `posts/${postId}`));
+  const post = postSnapshot.val();
+  
+  if (post && post.claimed && post.claimedBy && post.claimedBy.uid === userId) {
+    return true;
+  }
+
+  // Also check the claims collection for any pending claims
   const claimsRef = ref(db, 'claims');
   const claimsSnapshot = await get(claimsRef);
   const claims = claimsSnapshot.val();
@@ -381,6 +343,17 @@ window.openClaimModal = async function(postId) {
 
   currentClaimPostId = postId;
   currentClaimPost = postsMap[postId];
+
+  // **FIX: Check if the post is already claimed**
+  if (currentClaimPost.claimed) {
+    alert("This item has already been claimed by someone else.");
+    return;
+  }
+
+  if (currentClaimPost.user && currentClaimPost.user.uid === currentUser.uid) {
+    alert("You cannot claim your own post.");
+    return;
+  }
 
   // Check if user has already claimed this post
   const hasAlreadyClaimed = await hasUserClaimedPost(postId, currentUser.uid);
@@ -488,6 +461,22 @@ document.getElementById('sendClaimBtn').onclick = async function() {
     return;
   }
 
+  // **FIX: Double-check if the post is still available before claiming**
+  const currentPostSnapshot = await get(ref(db, `posts/${currentClaimPostId}`));
+  const currentPostData = currentPostSnapshot.val();
+  
+  if (!currentPostData) {
+    alert('This post no longer exists.');
+    document.getElementById('claimModal').style.display = 'none';
+    return;
+  }
+  
+  if (currentPostData.claimed) {
+    alert('This item has already been claimed by someone else.');
+    document.getElementById('claimModal').style.display = 'none';
+    return;
+  }
+
   try {
     // Store the message in Firebase
     const claimsRef = ref(db, 'claims');
@@ -500,6 +489,17 @@ document.getElementById('sendClaimBtn').onclick = async function() {
       timestamp: Date.now()
     };
     await push(claimsRef, newClaim);
+
+    // **FIX: Automatically mark the post as claimed when claim request is sent**
+    const postRef = ref(db, `posts/${currentClaimPostId}`);
+    await update(postRef, {
+      claimed: true,
+      claimedBy: {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        timestamp: Date.now()
+      }
+    });
 
     // Create notification for the post creator with additional data
     await createNotification(
@@ -516,6 +516,7 @@ document.getElementById('sendClaimBtn').onclick = async function() {
 
     document.getElementById('claimModal').style.display = 'none';
     alert('Claim request sent successfully!');
+    window.location.reload();
   } catch (error) {
     console.error('Error sending message:', error);
     alert('Error sending message. Please try again.');
@@ -1030,6 +1031,9 @@ async function sendMessage(text) {
       }
     );
   }
+  
+  // Reload the page after sending message
+  window.location.reload();
 }
 
 // Chat modal event listeners
@@ -1068,6 +1072,7 @@ document.getElementById('chatMessageInput').addEventListener('keydown', async (e
 // Make chat function available globally
 window.openChat = openChat;
 
+// Enhanced Find Matches function
 document.getElementById('findMatchesBtn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("Please log in to use the matching feature.");
@@ -1081,93 +1086,1174 @@ document.getElementById('findMatchesBtn').addEventListener('click', async () => 
     return;
   }
 
-  // Fetch all notifications to avoid duplicate match notifications
-  const notificationsSnapshot = await get(ref(db, 'notifications'));
-  const notificationsData = notificationsSnapshot.val() || {};
-
-  // Helper to check if a match notification already exists for a user and post
-  function hasMatchNotification(userId, postId) {
-    return Object.values(notificationsData).some(
-      n => n.to === userId && n.type === 'match' && n.postId === postId
-    );
-  }
-
-  // Separate user's posts and others'
-  const myPosts = [];
-  const otherPosts = [];
-  for (const [id, post] of Object.entries(postsData)) {
-    if (post.user && post.user.uid === currentUser.uid) {
-      myPosts.push({ id, ...post });
-    } else {
-      otherPosts.push({ id, ...post });
-    }
-  }
+  // Get user's posts
+  const myPosts = Object.entries(postsData)
+    .filter(([, post]) => post.user?.uid === currentUser.uid)
+    .map(([id, post]) => ({ id, ...post }));
 
   if (myPosts.length === 0) {
     alert("You need to create a post first to find matches.");
     return;
   }
 
-  // Try to find matches for each of the user's posts
-  let foundMatch = false;
-  let matchInfo = null;
-  for (const myPost of myPosts) {
+  // Find all potential matches for user's posts
+  const allMatches = findAllMatches(myPosts, postsData);
+  
+  if (allMatches.length === 0) {
+    showNoMatchesModal();
+  } else {
+    showMatchesModal(allMatches);
+  }
+});
+
+// Find all matches for user's posts
+function findAllMatches(userPosts, allPosts) {
+  const otherPosts = Object.entries(allPosts)
+    .filter(([, post]) => post.user?.uid !== currentUser.uid)
+    .map(([id, post]) => ({ id, ...post }));
+
+  let allMatches = [];
+
+  for (const myPost of userPosts) {
     const myType = myPost.type?.toLowerCase();
     if (myType !== "lost" && myType !== "found") continue;
-    const myLabels = (myPost.labels || []).map(l => l.toLowerCase());
 
     for (const otherPost of otherPosts) {
       const otherType = otherPost.type?.toLowerCase();
       if (!otherType || myType === otherType) continue;
-      const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
 
-      // Find shared labels (excluding "lost"/"found")
-      const shared = myLabels.filter(
-        l => l !== "lost" && l !== "found" && otherLabels.includes(l)
-      );
-      if (shared.length > 0) {
-        foundMatch = true;
-        matchInfo = { myPost, otherPost, shared, myType, otherType };
-        const notificationsRef = ref(db, 'notifications');
-        // Notify current user if not already notified
-        if (!hasMatchNotification(currentUser.uid, otherPost.id)) {
-          await push(notificationsRef, {
-            to: currentUser.uid,
-            title: 'Potential Match Found!',
-            message: `We found a matching "${otherType}" post: "${otherPost.title}" with labels: ${shared.join(", ")}`,
-            type: 'match',
-            postId: otherPost.id,
-            matchedWithId: myPost.id,
-            timestamp: Date.now(),
-            read: false
-          });
-        }
-        // Notify other user if not already notified
-        if (otherPost.user && otherPost.user.uid && !hasMatchNotification(otherPost.user.uid, myPost.id)) {
-          await push(notificationsRef, {
-            to: otherPost.user.uid,
-            title: 'Potential Match Found!',
-            message: `We found a matching "${myType}" post: "${myPost.title}" with labels: ${shared.join(", ")}`,
-            type: 'match',
-            postId: myPost.id,
-            matchedWithId: otherPost.id,
-            timestamp: Date.now(),
-            read: false
-          });
-        }
-        // Show the enhanced match modal
-        showMatchSuggestionModal(myPost, otherPost, shared);
-        break;
+      // Calculate comprehensive similarity
+      const similarity = calculateEnhancedSimilarity(myPost, otherPost);
+      
+      // Consider it a match if confidence is above 10% (inclusive threshold)
+      if (similarity.confidence >= 10) {
+        allMatches.push({
+          myPost,
+          otherPost,
+          similarity,
+          matchId: `${myPost.id}-${otherPost.id}`
+        });
       }
     }
-    if (foundMatch) {
-      break;
+  }
+
+  // Sort by confidence (highest first)
+  return allMatches.sort((a, b) => b.similarity.confidence - a.similarity.confidence);
+}
+
+// Show modal with no matches found
+function showNoMatchesModal() {
+  const modal = document.createElement('div');
+  modal.className = 'matches-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🔍 Find Matches Results</h2>
+        <button class="close-btn">×</button>
+      </div>
+      
+      <div class="no-matches-content">
+        <div class="no-matches-icon">😔</div>
+        <h3>No matches found at this time</h3>
+        <p>We couldn't find any potential matches for your posts right now. Here are some tips:</p>
+        
+        <div class="tips">
+          <div class="tip">
+            <strong>📝 Add more details:</strong> Include specific descriptions, colors, brands, or locations
+          </div>
+          <div class="tip">
+            <strong>🏷️ Use multiple labels:</strong> Add relevant tags in different languages (Spanish, Catalan, English)
+          </div>
+          <div class="tip">
+            <strong>🔄 Check back later:</strong> New posts are added regularly by other users
+          </div>
+          <div class="tip">
+            <strong>📍 Include location:</strong> Specify where you lost or found the item
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="primary-btn" id="closeNoMatchBtn">Got it</button>
+          <button class="secondary-btn" id="createNewPostBtn">Create New Post</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Add event listeners for buttons
+  const closeBtn = modal.querySelector('.close-btn');
+  const closeNoMatchBtn = modal.querySelector('#closeNoMatchBtn');
+  const createNewPostBtn = modal.querySelector('#createNewPostBtn');
+  
+  closeBtn.addEventListener('click', closeMatchesModal);
+  closeNoMatchBtn.addEventListener('click', closeMatchesModal);
+  createNewPostBtn.addEventListener('click', () => {
+    closeMatchesModal();
+    window.location.href = 'post-creation.html';
+  });
+  
+  // Add event listener for clicking outside the modal
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeMatchesModal();
     }
+  });
+}
+
+// Show modal with all matches
+function showMatchesModal(matches) {
+  const modal = document.createElement('div');
+  modal.className = 'matches-modal';
+  
+  // Categorize matches by confidence
+  const highConfidence = matches.filter(m => m.similarity.confidence >= 70);
+  const mediumConfidence = matches.filter(m => m.similarity.confidence >= 40 && m.similarity.confidence < 70);
+  const lowConfidence = matches.filter(m => m.similarity.confidence >= 10 && m.similarity.confidence < 40);
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🎯 Found ${matches.length} Potential Match${matches.length > 1 ? 'es' : ''}</h2>
+        <button class="close-btn">×</button>
+      </div>
+      
+      <div class="matches-content">
+        <div class="matches-summary">
+          <div class="summary-stats">
+            <div class="stat high">${highConfidence.length} High confidence</div>
+            <div class="stat medium">${mediumConfidence.length} Good matches</div>
+            <div class="stat low">${lowConfidence.length} Potential matches</div>
+          </div>
+        </div>
+        
+        <div class="matches-list">
+          ${renderMatchCategory('🔥 High Confidence Matches', highConfidence, 'high')}
+          ${renderMatchCategory('✨ Good Matches', mediumConfidence, 'medium')}
+          ${renderMatchCategory('💡 Potential Matches', lowConfidence, 'low')}
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Add event listener for close button (fix for close button not working)
+  const closeBtn = modal.querySelector('.close-btn');
+  closeBtn.addEventListener('click', closeMatchesModal);
+  
+  // Add event listener for clicking outside the modal
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeMatchesModal();
+    }
+  });
+  
+  // Add event listeners for match cards (enhanced match details)
+  const matchCards = modal.querySelectorAll('.match-card');
+  matchCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const matchData = JSON.parse(card.getAttribute('data-match').replace(/&apos;/g, "'"));
+      showDetailedMatchPreview(matchData);
+    });
+  });
+  
+  // Add modal styles
+  addMatchesModalStyles();
+}
+
+// Render a category of matches
+function renderMatchCategory(title, matches, category) {
+  if (matches.length === 0) return '';
+  
+  return `
+    <div class="match-category ${category}">
+      <h3>${title}</h3>
+      <div class="matches-grid">
+        ${matches.map(match => renderMatchCard(match)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Render a single match card
+function renderMatchCard(match) {
+  const { myPost, otherPost, similarity } = match;
+  
+  return `
+    <div class="match-card" data-match='${JSON.stringify(match).replace(/'/g, "&apos;")}'>
+      <div class="match-score ${getConfidenceClass(similarity.confidence)}">
+        ${similarity.confidence}%
+      </div>
+      
+      <div class="match-comparison">
+        <div class="post-info my-post">
+          <span class="post-type ${myPost.type}">${myPost.type}</span>
+          <h4>${myPost.title}</h4>
+          <p>${truncateText(myPost.description || 'No description', 50)}</p>
+        </div>
+        
+        <div class="match-arrow">↔</div>
+        
+        <div class="post-info other-post">
+          <span class="post-type ${otherPost.type}">${otherPost.type}</span>
+          <h4>${otherPost.title}</h4>
+          <p>${truncateText(otherPost.description || 'No description', 50)}</p>
+        </div>
+      </div>
+      
+      <div class="match-factors">
+        <div class="factors-title">Matching factors:</div>
+        <div class="factors-list">
+          ${similarity.matchingFactors.slice(0, 2).map(factor => `<span class="factor">${factor}</span>`).join('')}
+          ${similarity.matchingFactors.length > 2 ? `<span class="factor-more">+${similarity.matchingFactors.length - 2} more</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Helper functions
+function getConfidenceClass(confidence) {
+  if (confidence >= 70) return 'high';
+  if (confidence >= 40) return 'medium';
+  return 'low';
+}
+
+function truncateText(text, maxLength) {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + '...';
+}
+
+function closeMatchesModal() {
+  const modal = document.querySelector('.matches-modal');
+  if (modal) {
+    modal.remove();
   }
-  if (!foundMatch) {
-    alert("No matches found based on labels. Keep checking back as new posts are added!");
+}
+
+// Enhanced detailed match preview function
+function showDetailedMatchPreview(matchData) {
+  const { myPost, otherPost, similarity } = matchData;
+  
+  // Remove any existing preview modal
+  const existingPreview = document.querySelector('.match-preview-modal');
+  if (existingPreview) {
+    existingPreview.remove();
   }
-});
+  
+  const previewModal = document.createElement('div');
+  previewModal.className = 'match-preview-modal';
+  
+  // Format timestamps
+  const formatDate = (timestamp) => {
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
+  previewModal.innerHTML = `
+    <div class="preview-content">
+      <div class="preview-header">
+        <h2>🔍 Match Details Preview</h2>
+        <button class="preview-close-btn">×</button>
+      </div>
+      
+      <div class="match-confidence-display">
+        <div class="confidence-meter ${getConfidenceClass(similarity.confidence)}">
+          <div class="confidence-bar" style="width: ${similarity.confidence}%"></div>
+          <span class="confidence-text">${similarity.confidence}% Match Confidence</span>
+        </div>
+      </div>
+      
+      <div class="detailed-comparison">
+        <div class="post-detail my-post-detail">
+          <div class="detail-header">
+            <span class="post-type-badge ${myPost.type}">YOUR ${myPost.type.toUpperCase()}</span>
+            <span class="post-date">${formatDate(myPost.timestamp)}</span>
+          </div>
+          <h3>${escapeHtml(myPost.title)}</h3>
+          ${myPost.imageData ? `
+            <div class="post-image-container">
+              <img src="${myPost.imageData}" alt="${escapeHtml(myPost.title)}" class="post-preview-image" />
+            </div>
+          ` : `
+            <div class="no-image-placeholder">
+              <i class="fas fa-image"></i>
+              <span>No image available</span>
+            </div>
+          `}
+          <div class="post-description">
+            <strong>Description:</strong>
+            <p>${escapeHtml(myPost.description || 'No description provided')}</p>
+          </div>
+          ${myPost.location ? `
+            <div class="post-location">
+              <i class="fas fa-map-marker-alt"></i>
+              <span>${escapeHtml(myPost.location)}</span>
+            </div>
+          ` : ''}
+          ${myPost.labels && myPost.labels.length > 0 ? `
+            <div class="post-labels">
+              <strong>Labels:</strong>
+              <div class="labels-list">
+                ${myPost.labels.map(label => `<span class="label-tag">${escapeHtml(label)}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+        
+        <div class="match-divider">
+          <div class="match-connection-line"></div>
+          <div class="match-icon">🔗</div>
+        </div>
+        
+        <div class="post-detail other-post-detail">
+          <div class="detail-header">
+            <span class="post-type-badge ${otherPost.type}">POTENTIAL ${otherPost.type.toUpperCase()}</span>
+            <span class="post-date">${formatDate(otherPost.timestamp)}</span>
+          </div>
+          <h3>${escapeHtml(otherPost.title)}</h3>
+          ${otherPost.imageData ? `
+            <div class="post-image-container">
+              <img src="${otherPost.imageData}" alt="${escapeHtml(otherPost.title)}" class="post-preview-image" />
+            </div>
+          ` : `
+            <div class="no-image-placeholder">
+              <div class="no-image-icon">
+                <i class="fas fa-image"></i>
+                <span>No image available</span>
+              </div>
+            </div>
+          `}
+          <div class="post-description">
+            <strong>Description:</strong>
+            <p>${escapeHtml(otherPost.description || 'No description provided')}</p>
+          </div>
+          ${otherPost.location ? `
+            <div class="post-location">
+              <i class="fas fa-map-marker-alt"></i>
+              <span>${escapeHtml(otherPost.location)}</span>
+            </div>
+          ` : ''}
+          ${otherPost.labels && otherPost.labels.length > 0 ? `
+            <div class="post-labels">
+              <strong>Labels:</strong>
+              <div class="labels-list">
+                ${otherPost.labels.map(label => `<span class="label-tag">${escapeHtml(label)}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      
+      <div class="matching-analysis">
+        <h4>🎯 Why This Matches:</h4>
+        <div class="factors-grid">
+          ${similarity.matchingFactors.map(factor => `
+            <div class="factor-item">
+              <i class="fas fa-check-circle"></i>
+              <span>${escapeHtml(factor)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <div class="preview-actions">
+        <button class="action-btn secondary" id="backToMatches">
+          <i class="fas fa-arrow-left"></i>
+          Back to Matches
+        </button>
+        <button class="action-btn primary" id="viewFullDetails">
+          <i class="fas fa-eye"></i>
+          View Full Details & Contact
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(previewModal);
+  
+  // Add event listeners
+  const closeBtn = previewModal.querySelector('.preview-close-btn');
+  const backBtn = previewModal.querySelector('#backToMatches');
+  const viewDetailsBtn = previewModal.querySelector('#viewFullDetails');
+  
+  closeBtn.addEventListener('click', () => previewModal.remove());
+  backBtn.addEventListener('click', () => previewModal.remove());
+  viewDetailsBtn.addEventListener('click', () => {
+    previewModal.remove();
+    closeMatchesModal();
+    window.location.href = `post-details.html?id=${encodeURIComponent(otherPost.id)}&matchedWith=${encodeURIComponent(myPost.id)}`;
+  });
+  
+  // Close on outside click
+  previewModal.addEventListener('click', (e) => {
+    if (e.target === previewModal) {
+      previewModal.remove();
+    }
+  });
+  
+  // Add preview modal styles
+  addMatchPreviewStyles();
+}
+
+// Add comprehensive modal styles
+function addMatchesModalStyles() {
+  if (document.querySelector('#matches-modal-styles')) return;
+  
+  const style = document.createElement('style');
+  style.id = 'matches-modal-styles';
+  style.textContent = `
+    .matches-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    .matches-modal .modal-content {
+      background: white;
+      border-radius: 12px;
+      width: 95%;
+      max-width: 1000px;
+      max-height: 90vh;
+      overflow: hidden;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s ease-out;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .matches-modal .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px;
+      border-bottom: 2px solid #f8f9fa;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .matches-modal .modal-header h2 {
+      margin: 0;
+      font-size: 1.5em;
+    }
+    
+    .matches-modal .close-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      font-size: 24px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    
+    .matches-modal .close-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .matches-content {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    
+    .matches-summary {
+      margin-bottom: 24px;
+    }
+    
+    .summary-stats {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .stat {
+      padding: 12px 20px;
+      border-radius: 25px;
+      font-weight: 600;
+      color: white;
+      text-align: center;
+      min-width: 120px;
+    }
+    
+    .stat.high {
+      background: linear-gradient(135deg, #27ae60, #2ecc71);
+    }
+    
+    .stat.medium {
+      background: linear-gradient(135deg, #f39c12, #e67e22);
+    }
+    
+    .stat.low {
+      background: linear-gradient(135deg, #3498db, #2980b9);
+    }
+    
+    .match-category {
+      margin-bottom: 32px;
+    }
+    
+    .match-category h3 {
+      color: #2c3e50;
+      margin-bottom: 16px;
+      font-size: 1.2em;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #ecf0f1;
+    }
+    
+    .matches-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      gap: 16px;
+    }
+    
+    .match-card {
+      border: 2px solid #ecf0f1;
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: white;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .match-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+      border-color: #3498db;
+    }
+    
+    .match-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #3498db, #2980b9);
+      transform: scaleX(0);
+      transition: transform 0.3s ease;
+    }
+    
+    .match-card:hover::before {
+      transform: scaleX(1);
+    }
+    
+    .match-score {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 0.9em;
+      color: white;
+    }
+    
+    .match-score.high {
+      background: #27ae60;
+    }
+    
+    .match-score.medium {
+      background: #f39c12;
+    }
+    
+    .match-score.low {
+      background: #3498db;
+    }
+    
+    .match-comparison {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      margin-top: 8px;
+    }
+    
+    .post-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .post-info h4 {
+      margin: 8px 0 4px 0;
+      color: #2c3e50;
+      font-size: 1em;
+      line-height: 1.3;
+    }
+    
+    .post-info p {
+      margin: 0;
+      color: #7f8c8d;
+      font-size: 0.85em;
+      line-height: 1.4;
+    }
+    
+    .post-type {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.75em;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    
+    .post-type.lost {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .post-type.found {
+      background: #27ae60;
+      color: white;
+    }
+    
+    .match-arrow {
+      font-size: 1.2em;
+      color: #3498db;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+    
+    .match-factors {
+      border-top: 1px solid #ecf0f1;
+      padding-top: 12px;
+    }
+    
+    .factors-title {
+      font-size: 0.8em;
+      color: #7f8c8d;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    
+    .factors-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    
+    .factor {
+      background: #f8f9fa;
+      color: #5a6c7d;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 0.75em;
+      border: 1px solid #e9ecef;
+    }
+    
+    .factor-more {
+      background: #3498db;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: 500;
+    }
+    
+    .no-matches-content {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    
+    .no-matches-icon {
+      font-size: 4em;
+      margin-bottom: 20px;
+    }
+    
+    .no-matches-content h3 {
+      color: #2c3e50;
+      margin-bottom: 16px;
+    }
+    
+    .no-matches-content p {
+      color: #7f8c8d;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+    
+    .tips {
+      text-align: left;
+      max-width: 500px;
+      margin: 0 auto 32px;
+    }
+    
+    .tip {
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      border-left: 4px solid #3498db;
+    }
+    
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .primary-btn, .secondary-btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .primary-btn {
+      background: #3498db;
+      color: white;
+    }
+    
+    .primary-btn:hover {
+      background: #2980b9;
+    }
+    
+    .secondary-btn {
+      background: #ecf0f1;
+      color: #5a6c7d;
+    }
+    
+    .secondary-btn:hover {
+      background: #d5dbdb;
+    }
+    
+    @media (max-width: 768px) {
+      .matches-modal .modal-content {
+        width: 98%;
+        margin: 1%;
+      }
+      
+      .matches-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .match-comparison {
+        flex-direction: column;
+        gap: 8px;
+      }
+      
+      .match-arrow {
+        transform: rotate(90deg);
+      }
+      
+      .summary-stats {
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .modal-actions {
+        flex-direction: column;
+      }
+    }
+  `;
+  
+  document.head.appendChild(style);
+}
+
+// Add styles for the detailed match preview modal
+function addMatchPreviewStyles() {
+  if (document.querySelector('#match-preview-styles')) return;
+  
+  const style = document.createElement('style');
+  style.id = 'match-preview-styles';
+  style.textContent = `
+    .match-preview-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 11000;
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    .preview-content {
+      background: white;
+      border-radius: 16px;
+      width: 95%;
+      max-width: 1200px;
+      max-height: 95vh;
+      overflow: hidden;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.3s ease-out;
+    }
+    
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .preview-header h2 {
+      margin: 0;
+      font-size: 1.4em;
+    }
+    
+    .preview-close-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      font-size: 24px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    
+    .preview-close-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1);
+    }
+    
+    .match-confidence-display {
+      padding: 20px 24px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e9ecef;
+    }
+    
+    .confidence-meter {
+      position: relative;
+      background: #e9ecef;
+      border-radius: 20px;
+      height: 40px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .confidence-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      border-radius: 20px;
+      transition: width 0.8s ease-out;
+    }
+    
+    .confidence-meter.high .confidence-bar {
+      background: linear-gradient(90deg, #27ae60, #2ecc71);
+    }
+    
+    .confidence-meter.medium .confidence-bar {
+      background: linear-gradient(90deg, #f39c12, #e67e22);
+    }
+    
+    .confidence-meter.low .confidence-bar {
+      background: linear-gradient(90deg, #3498db, #2980b9);
+    }
+    
+    .confidence-text {
+      position: relative;
+      z-index: 2;
+      font-weight: bold;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+    
+    .detailed-comparison {
+      display: flex;
+      gap: 20px;
+      padding: 24px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .post-detail {
+      flex: 1;
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 20px;
+      border: 2px solid #e9ecef;
+    }
+    
+    .detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .post-type-badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8em;
+      font-weight: bold;
+      color: white;
+    }
+    
+    .post-type-badge.lost {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+    }
+    
+    .post-type-badge.found {
+      background: linear-gradient(135deg, #27ae60, #229954);
+    }
+    
+    .post-date {
+      font-size: 0.85em;
+      color: #7f8c8d;
+    }
+    
+    .post-detail h3 {
+      margin: 0 0 16px 0;
+      color: #2c3e50;
+      font-size: 1.3em;
+      line-height: 1.3;
+    }
+    
+    .post-image-container {
+      margin-bottom: 16px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #ecf0f1;
+    }
+    
+    .post-preview-image {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+    
+    .no-image-placeholder {
+      height: 200px;
+      background: #ecf0f1;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #95a5a6;
+      margin-bottom: 16px;
+    }
+    
+    .no-image-placeholder i {
+      font-size: 3em;
+      margin-bottom: 8px;
+    }
+    
+    .post-description {
+      margin-bottom: 16px;
+    }
+    
+    .post-description strong {
+      color: #2c3e50;
+      display: block;
+      margin-bottom: 8px;
+    }
+    
+    .post-description p {
+      margin: 0;
+      color: #5a6c7d;
+      line-height: 1.5;
+    }
+    
+    .post-location {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      color: #e74c3c;
+      font-weight: 500;
+    }
+    
+    .post-labels strong {
+      color: #2c3e50;
+      display: block;
+      margin-bottom: 8px;
+    }
+    
+    .labels-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    
+    .label-tag {
+      background: #3498db;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.8em;
+      font-weight: 500;
+    }
+    
+    .match-divider {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 60px;
+      position: relative;
+    }
+    
+    .match-connection-line {
+      width: 2px;
+      flex: 1;
+      background: linear-gradient(to bottom, #3498db, #2980b9);
+      min-height: 100px;
+    }
+    
+    .match-icon {
+      background: white;
+      border: 3px solid #3498db;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2em;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    .matching-analysis {
+      padding: 24px;
+      background: #f8f9fa;
+      border-top: 1px solid #e9ecef;
+    }
+    
+    .matching-analysis h4 {
+      margin: 0 0 16px 0;
+      color: #2c3e50;
+    }
+    
+    .factors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 12px;
+    }
+    
+    .factor-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+      border-left: 4px solid #27ae60;
+    }
+    
+    .factor-item i {
+      color: #27ae60;
+      font-size: 1.1em;
+    }
+    
+    .preview-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      padding: 24px;
+      background: white;
+      border-top: 1px solid #e9ecef;
+    }
+    
+    .action-btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 1em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      flex: 1;
+      justify-content: center;
+    }
+    
+    .action-btn.primary {
+      background: linear-gradient(135deg, #3498db, #2980b9);
+      color: white;
+    }
+    
+    .action-btn.primary:hover {
+      background: linear-gradient(135deg, #2980b9, #21618c);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+    }
+    
+    .action-btn.secondary {
+      background: #ecf0f1;
+      color: #5a6c7d;
+    }
+    
+    .action-btn.secondary:hover {
+      background: #d5dbdb;
+      transform: translateY(-1px);
+    }
+    
+    @media (max-width: 768px) {
+      .detailed-comparison {
+        flex-direction: column;
+        gap: 16px;
+      }
+      
+      .match-divider {
+        flex-direction: row;
+        min-width: auto;
+        height: 60px;
+        width: 100%;
+      }
+      
+      .match-connection-line {
+        width: 100%;
+        height: 2px;
+        min-height: auto;
+      }
+      
+      .factors-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .preview-actions {
+        flex-direction: column;
+      }
+    }
+  `;
+  
+  document.head.appendChild(style);
+}
 
 // Enhanced Match Suggestion Modal Functions
 function showMatchSuggestionModal(myPost, matchedPost, sharedLabels) {
@@ -1233,6 +2319,223 @@ function showMatchSuggestionModal(myPost, matchedPost, sharedLabels) {
 // Auto-suggestion system for browsing users
 let suggestionTimeouts = new Set();
 
+// Multilingual dictionary for common lost items
+const multilingualDictionary = {
+  // Writing instruments
+  'pen': ['boli', 'bolígrafo', 'stylo', 'pluma', 'escribir'],
+  'boli': ['pen', 'stylo', 'bolígrafo', 'pluma', 'writing'],
+  'stylo': ['pen', 'boli', 'bolígrafo', 'pluma', 'writing'],
+  'pencil': ['lápiz', 'crayon', 'llapis'],
+  'lápiz': ['pencil', 'crayon', 'llapis'],
+  
+  // Colors
+  'red': ['rojo', 'rouge', 'vermell', 'roig'],
+  'rojo': ['red', 'rouge', 'vermell', 'roig'],
+  'rouge': ['red', 'rojo', 'vermell', 'roig'],
+  'vermell': ['red', 'rojo', 'rouge', 'roig'],
+  'blue': ['azul', 'bleu', 'blau'],
+  'azul': ['blue', 'bleu', 'blau'],
+  'bleu': ['blue', 'azul', 'blau'],
+  'blau': ['blue', 'azul', 'bleu'],
+  'black': ['negro', 'noir', 'negre'],
+  'negro': ['black', 'noir', 'negre'],
+  'noir': ['black', 'negro', 'negre'],
+  'negre': ['black', 'negro', 'noir'],
+  'white': ['blanco', 'blanc'],
+  'blanco': ['white', 'blanc'],
+  'blanc': ['white', 'blanco'],
+  'green': ['verde', 'vert', 'verd'],
+  'verde': ['green', 'vert', 'verd'],
+  'vert': ['green', 'verde', 'verd'],
+  'verd': ['green', 'verde', 'vert'],
+  
+  // Electronics
+  'phone': ['teléfono', 'móvil', 'mòbil', 'portable', 'celular'],
+  'teléfono': ['phone', 'móvil', 'mòbil', 'portable', 'celular'],
+  'móvil': ['phone', 'teléfono', 'mòbil', 'portable', 'celular'],
+  'mòbil': ['phone', 'teléfono', 'móvil', 'portable', 'celular'],
+  'portable': ['phone', 'teléfono', 'móvil', 'mòbil', 'celular'],
+  'laptop': ['portátil', 'ordenador', 'ordinador', 'computer'],
+  'portátil': ['laptop', 'ordenador', 'ordinador', 'computer'],
+  'ordenador': ['laptop', 'portátil', 'ordinador', 'computer'],
+  'ordinador': ['laptop', 'portátil', 'ordenador', 'computer'],
+  'headphones': ['auriculares', 'cascos', 'headset'],
+  'auriculares': ['headphones', 'cascos', 'headset'],
+  'cascos': ['headphones', 'auriculares', 'headset'],
+  
+  // Clothing
+  'jacket': ['chaqueta', 'cazadora', 'americana', 'jaqueta'],
+  'chaqueta': ['jacket', 'cazadora', 'americana', 'jaqueta'],
+  'jaqueta': ['jacket', 'chaqueta', 'cazadora', 'americana'],
+  'shirt': ['camisa', 'camiseta'],
+  'camisa': ['shirt', 'camiseta'],
+  'camiseta': ['shirt', 'camisa'],
+  'shoes': ['zapatos', 'zapatillas', 'sabates'],
+  'zapatos': ['shoes', 'zapatillas', 'sabates'],
+  'zapatillas': ['shoes', 'zapatos', 'sabates'],
+  'sabates': ['shoes', 'zapatos', 'zapatillas'],
+  
+  // Accessories
+  'bag': ['bolso', 'mochila', 'bolsa', 'motxilla'],
+  'bolso': ['bag', 'mochila', 'bolsa', 'motxilla'],
+  'mochila': ['bag', 'bolso', 'bolsa', 'motxilla'],
+  'motxilla': ['bag', 'bolso', 'mochila', 'bolsa'],
+  'wallet': ['cartera', 'billetera', 'monedero'],
+  'cartera': ['wallet', 'billetera', 'monedero'],
+  'billetera': ['wallet', 'cartera', 'monedero'],
+  'keys': ['llaves', 'claves', 'claus'],
+  'llaves': ['keys', 'claves', 'claus'],
+  'claus': ['keys', 'llaves', 'claves'],
+  'watch': ['reloj', 'montre'],
+  'reloj': ['watch', 'montre'],
+  'montre': ['watch', 'reloj'],
+  'glasses': ['gafas', 'anteojos', 'ulleres'],
+  'gafas': ['glasses', 'anteojos', 'ulleres'],
+  'ulleres': ['glasses', 'gafas', 'anteojos'],
+  
+  // Books and study materials
+  'book': ['libro', 'llibre', 'livre'],
+  'libro': ['book', 'llibre', 'livre'],
+  'llibre': ['book', 'libro', 'livre'],
+  'notebook': ['cuaderno', 'libreta', 'quadern'],
+  'cuaderno': ['notebook', 'libreta', 'quadern'],
+  'quadern': ['notebook', 'cuaderno', 'libreta'],
+  
+  // Common descriptive words
+  'lost': ['perdido', 'perdut', 'perdu'],
+  'found': ['encontrado', 'trobat', 'trouvé'],
+  'small': ['pequeño', 'petit', 'petite'],
+  'big': ['grande', 'gran', 'grand'],
+  'new': ['nuevo', 'nou', 'nouveau'],
+  'old': ['viejo', 'vell', 'vieux']
+};
+
+// Calculate enhanced similarity between two posts
+function calculateEnhancedSimilarity(post1, post2) {
+  const scores = {
+    labelMatch: 0,
+    semanticMatch: 0,
+    textSimilarity: 0,
+    locationMatch: 0,
+    total: 0
+  };
+  
+  // Get text content for both posts
+  const text1 = `${post1.title || ''} ${post1.description || ''}`.toLowerCase();
+  const text2 = `${post2.title || ''} ${post2.description || ''}`.toLowerCase();
+  const labels1 = (post1.labels || []).map(l => l.toLowerCase());
+  const labels2 = (post2.labels || []).map(l => l.toLowerCase());
+  
+  // 1. Direct label matching (30% weight)
+  const directMatches = labels1.filter(l => 
+    l !== 'lost' && l !== 'found' && labels2.includes(l)
+  );
+  scores.labelMatch = directMatches.length > 0 ? 0.3 : 0;
+  
+  // 2. Semantic/multilingual matching (40% weight)
+  let semanticMatches = 0;
+  for (const label1 of labels1) {
+    if (label1 === 'lost' || label1 === 'found') continue;
+    
+    // Check direct translations
+    const translations = multilingualDictionary[label1] || [];
+    const hasTranslation = labels2.some(l2 => translations.includes(l2));
+    if (hasTranslation) semanticMatches++;
+    
+    // Check if any label2 translates to label1
+    for (const label2 of labels2) {
+      if (label2 === 'lost' || label2 === 'found') continue;
+      const reverseTranslations = multilingualDictionary[label2] || [];
+      if (reverseTranslations.includes(label1)) {
+        semanticMatches++;
+        break;
+      }
+    }
+  }
+  
+  // Also check text content for semantic matches
+  for (const [word, translations] of Object.entries(multilingualDictionary)) {
+    if (text1.includes(word)) {
+      for (const translation of translations) {
+        if (text2.includes(translation)) {
+          semanticMatches++;
+          break;
+        }
+      }
+    }
+  }
+  
+  scores.semanticMatch = semanticMatches > 0 ? Math.min(semanticMatches * 0.1, 0.4) : 0;
+  
+  // 3. Text similarity (20% weight)
+  const words1 = text1.split(/\s+/).filter(w => w.length > 2);
+  const words2 = text2.split(/\s+/).filter(w => w.length > 2);
+  const commonWords = words1.filter(w => words2.includes(w));
+  
+  if (words1.length > 0 && words2.length > 0) {
+    const similarity = commonWords.length / Math.max(words1.length, words2.length);
+    scores.textSimilarity = similarity * 0.2;
+  }
+  
+  // 4. Location proximity (10% weight)
+  if (post1.location && post2.location) {
+    const loc1 = post1.location.toLowerCase();
+    const loc2 = post2.location.toLowerCase();
+    
+    // Exact location match
+    if (loc1 === loc2) {
+      scores.locationMatch = 0.1;
+    }
+    // Partial location match
+    else if (loc1.includes(loc2) || loc2.includes(loc1)) {
+      scores.locationMatch = 0.05;
+    }
+    // Common location keywords
+    else {
+      const locationKeywords = ['campus', 'biblioteca', 'library', 'cafeteria', 'aula', 'classroom'];
+      const hasCommonLocation = locationKeywords.some(keyword => 
+        loc1.includes(keyword) && loc2.includes(keyword)
+      );
+      if (hasCommonLocation) scores.locationMatch = 0.03;
+    }
+  }
+  
+  // Calculate total score
+  scores.total = scores.labelMatch + scores.semanticMatch + scores.textSimilarity + scores.locationMatch;
+  
+  return {
+    score: scores.total,
+    confidence: Math.round(scores.total * 100),
+    breakdown: scores,
+    matchingFactors: getMatchingFactors(scores, directMatches, semanticMatches, commonWords),
+    directMatches,
+    semanticMatches
+  };
+}
+
+// Get human-readable matching factors
+function getMatchingFactors(scores, directMatches, semanticMatches, commonWords) {
+  const factors = [];
+  
+  if (scores.labelMatch > 0) {
+    factors.push(`Direct label match (${directMatches.join(', ')})`);
+  }
+  
+  if (scores.semanticMatch > 0) {
+    factors.push(`Multilingual similarity (${semanticMatches} translations)`);
+  }
+  
+  if (scores.textSimilarity > 0) {
+    factors.push(`Text similarity (${commonWords.length} common words)`);
+  }
+  
+  if (scores.locationMatch > 0) {
+    factors.push('Location proximity');
+  }
+  
+  return factors;
+}
+
 function checkForMatchSuggestions(userPosts, allPosts) {
   if (!currentUser || !userPosts.length) return;
 
@@ -1240,1513 +2543,414 @@ function checkForMatchSuggestions(userPosts, allPosts) {
     .filter(([, post]) => post.user?.uid !== currentUser.uid)
     .map(([id, post]) => ({ id, ...post }));
 
+  let bestMatches = [];
+
   for (const myPost of userPosts) {
     const myType = myPost.type?.toLowerCase();
     if (myType !== "lost" && myType !== "found") continue;
-    const myLabels = (myPost.labels || []).map(l => l.toLowerCase());
 
     for (const otherPost of otherPosts) {
       const otherType = otherPost.type?.toLowerCase();
       if (!otherType || myType === otherType) continue;
-      const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
 
-      // Find shared labels (excluding "lost"/"found")
-      const shared = myLabels.filter(
-        l => l !== "lost" && l !== "found" && otherLabels.includes(l)
-      );
+      // Calculate comprehensive similarity
+      const similarity = calculateEnhancedSimilarity(myPost, otherPost);
       
-      if (shared.length > 0) {
-        // Show suggestion popup after a delay
-        const timeoutId = setTimeout(() => {
-          showMatchSuggestionPopup(myPost, otherPost, shared);
-          suggestionTimeouts.delete(timeoutId);
-        }, 3000); // Show after 3 seconds of browsing
-        
-        suggestionTimeouts.add(timeoutId);
-        return; // Show only one suggestion at a time
+      // Consider it a match if confidence is above 15% (more lenient threshold)
+      if (similarity.confidence >= 15) {
+        bestMatches.push({
+          myPost,
+          otherPost,
+          similarity,
+          timestamp: Date.now()
+        });
       }
     }
   }
+
+  // Sort by confidence and show the best match
+  if (bestMatches.length > 0) {
+    bestMatches.sort((a, b) => b.similarity.confidence - a.similarity.confidence);
+    const bestMatch = bestMatches[0];
+    
+    // Show suggestion popup after a delay
+    const timeoutId = setTimeout(() => {
+      showEnhancedMatchSuggestionPopup(bestMatch);
+      suggestionTimeouts.delete(timeoutId);
+    }, 3000);
+    
+    suggestionTimeouts.add(timeoutId);
+  }
 }
 
-function showMatchSuggestionPopup(myPost, matchedPost, sharedLabels) {
+function showEnhancedMatchSuggestionPopup(matchData) {
   // Remove any existing popup
   const existingPopup = document.querySelector('.match-suggestion-popup');
   if (existingPopup) {
     existingPopup.remove();
   }
 
+  const { myPost, otherPost, similarity } = matchData;
+  const isMyPostLost = myPost.type?.toLowerCase() === 'lost';
+  
+  // Determine confidence level and styling
+  let confidenceClass = 'low';
+  let confidenceText = 'Potential Match';
+  
+  if (similarity.confidence >= 70) {
+    confidenceClass = 'high';
+    confidenceText = 'High Confidence';
+  } else if (similarity.confidence >= 40) {
+    confidenceClass = 'medium';
+    confidenceText = 'Good Match';
+  }
+
   const popup = document.createElement('div');
   popup.className = 'match-suggestion-popup';
   popup.innerHTML = `
-    <div class="suggestion-header">
-      <i class="fas fa-lightbulb"></i>
-      <span>Possible Match Found!</span>
-    </div>
-    <div class="suggestion-content">
-      <p><strong>Your post:</strong> ${escapeHtml(myPost.title)}</p>
-      <p><strong>Potential match:</strong> ${escapeHtml(matchedPost.title)}</p>
-      <p><strong>Common tags:</strong> ${sharedLabels.join(', ')}</p>
-    </div>
-    <div class="suggestion-actions">
-      <button class="suggestion-view" onclick="viewSuggestionMatch('${matchedPost.id}', '${myPost.id}')">
-        <i class="fas fa-eye"></i> View
-      </button>
-      <button class="suggestion-dismiss" onclick="dismissSuggestion()">
-        <i class="fas fa-times"></i> Dismiss
-      </button>
+    <div class="popup-content">
+      <div class="popup-header">
+        <h3>🎯 ${confidenceText} Found!</h3>
+        <button class="close-btn" onclick="dismissSuggestion()">×</button>
+      </div>
+      
+      <div class="match-info">
+        <div class="confidence-score ${confidenceClass}">
+          ${similarity.confidence}% Match
+        </div>
+        
+        <div class="posts-comparison">
+          <div class="post-summary my-post">
+            <span class="post-type ${myPost.type}">${myPost.type.toUpperCase()}</span>
+            <h4>${myPost.title}</h4>
+            <p>${myPost.description || 'No description'}</p>
+          </div>
+          
+          <div class="match-arrow">↔</div>
+          
+          <div class="post-summary other-post">
+            <span class="post-type ${otherPost.type}">${otherPost.type.toUpperCase()}</span>
+            <h4>${otherPost.title}</h4>
+            <p>${otherPost.description || 'No description'}</p>
+          </div>
+        </div>
+        
+        <div class="matching-factors">
+          <h5>Why this matches:</h5>
+          <ul>
+            ${similarity.matchingFactors.map(factor => `<li>${factor}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+      
+      <div class="popup-actions">
+        <button class="view-btn" onclick="viewSuggestionMatch('${otherPost.id}', '${myPost.id}')">
+          View Details
+        </button>
+        <button class="dismiss-btn" onclick="dismissSuggestion()">
+          Maybe Later
+        </button>
+      </div>
     </div>
   `;
 
   document.body.appendChild(popup);
 
-  // Auto-dismiss after 15 seconds
-  setTimeout(() => {
-    if (popup.parentNode) {
-      popup.remove();
+  // Add enhanced styling for the popup
+  const style = document.createElement('style');
+  style.textContent = `
+    .match-suggestion-popup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      animation: fadeIn 0.3s ease-out;
     }
-  }, 15000);
+    
+    .popup-content {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s ease-out;
+    }
+    
+    .popup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .popup-header h3 {
+      margin: 0;
+      color: #2c3e50;
+      font-size: 1.3em;
+    }
+    
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #7f8c8d;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .close-btn:hover {
+      background: #ecf0f1;
+      color: #e74c3c;
+    }
+    
+    .confidence-score {
+      text-align: center;
+      font-size: 1.5em;
+      font-weight: bold;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .confidence-score.high {
+      background: linear-gradient(135deg, #27ae60, #2ecc71);
+      color: white;
+    }
+    
+    .confidence-score.medium {
+      background: linear-gradient(135deg, #f39c12, #e67e22);
+      color: white;
+    }
+    
+    .confidence-score.low {
+      background: linear-gradient(135deg, #3498db, #2980b9);
+      color: white;
+    }
+    
+    .posts-comparison {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .post-summary {
+      flex: 1;
+      min-width: 200px;
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #ecf0f1;
+    }
+    
+    .post-summary h4 {
+      margin: 8px 0 5px 0;
+      color: #2c3e50;
+      font-size: 1.1em;
+    }
+    
+    .post-summary p {
+      margin: 0;
+      color: #7f8c8d;
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+    
+    .post-type {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    
+    .post-type.lost {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .post-type.found {
+      background: #27ae60;
+      color: white;
+    }
+    
+    .match-arrow {
+      font-size: 1.5em;
+      color: #3498db;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+    
+    .matching-factors {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .matching-factors h5 {
+      margin: 0 0 10px 0;
+      color: #2c3e50;
+    }
+    
+    .matching-factors ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    
+    .matching-factors li {
+      color: #5a6c7d;
+      margin-bottom: 5px;
+    }
+    
+    .popup-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+    
+    .view-btn, .dismiss-btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .view-btn {
+      background: #3498db;
+      color: white;
+    }
+    
+    .view-btn:hover {
+      background: #2980b9;
+      transform: translateY(-1px);
+    }
+    
+    .dismiss-btn {
+      background: #ecf0f1;
+      color: #7f8c8d;
+    }
+    
+    .dismiss-btn:hover {
+      background: #d5dbdb;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    @media (max-width: 768px) {
+      .posts-comparison {
+        flex-direction: column;
+      }
+      
+      .match-arrow {
+        transform: rotate(90deg);
+      }
+      
+      .popup-actions {
+        flex-direction: column;
+      }
+    }
+  `;
+  
+  // Only add style if it doesn't exist
+  if (!document.querySelector('#match-popup-styles')) {
+    style.id = 'match-popup-styles';
+    document.head.appendChild(style);
+  }
 }
 
-// Global functions for suggestion popup
-window.viewSuggestionMatch = (matchedPostId, myPostId) => {
+// Global functions for match suggestion popup
+window.viewSuggestionMatch = function(otherPostId, myPostId) {
   dismissSuggestion();
-  window.location.href = `post-details.html?id=${encodeURIComponent(matchedPostId)}&matchedWith=${encodeURIComponent(myPostId)}`;
+  window.location.href = `post-details.html?id=${encodeURIComponent(otherPostId)}&matchedWith=${encodeURIComponent(myPostId)}`;
 };
 
-window.dismissSuggestion = () => {
+window.dismissSuggestion = function() {
   const popup = document.querySelector('.match-suggestion-popup');
   if (popup) {
     popup.remove();
   }
 };
 
-// Enhanced Find Matches function
-document.getElementById('findMatchesBtn').addEventListener('click', async () => {
-  if (!currentUser) {
-    alert("Please log in to use the matching feature.");
-    return;
-  }
-
-  const postsSnapshot = await get(ref(db, 'posts'));
-  const postsData = postsSnapshot.val();
-  if (!postsData) {
-    alert("No posts available for matching.");
-    return;
-  }
-
-  // Get user's posts
-  const myPosts = Object.entries(postsData)
-    .filter(([, post]) => post.user?.uid === currentUser.uid)
-    .map(([id, post]) => ({ id, ...post }));
-
-  if (myPosts.length === 0) {
-    alert("You need to create a post first to find matches.");
-    return;
-  }
-
-  checkForMatchSuggestions(myPosts, postsData);
-});
-
-// Enhanced AI-Powered Recommendation System
-class AIRecommendationEngine {
-  constructor() {
-    this.weightings = {
-      exactMatch: 12,
-      semanticSimilarity: 10,
-      visualSimilarity: 8,
-      descriptionMatch: 7,
-      categoryMatch: 6,
-      colorMatch: 5,
-      sizeMatch: 4,
-      locationProximity: 4,
-      temporalRelevance: 3,
-      brandMatch: 6
-    };
-    
-    // Enhanced semantic groups with more comprehensive categorization
-    this.semanticGroups = {
-      electronics: {
-        main: ['phone', 'mobile', 'smartphone', 'iphone', 'android', 'tablet', 'laptop', 'computer', 'pc', 'macbook'],
-        accessories: ['headphones', 'earbuds', 'airpods', 'charger', 'cable', 'mouse', 'keyboard', 'case', 'cover'],
-        devices: ['camera', 'smartwatch', 'fitness tracker', 'bluetooth speaker', 'powerbank', 'adapter']
-      },
-      accessories: {
-        jewelry: ['watch', 'ring', 'necklace', 'bracelet', 'earrings', 'jewelry', 'chain', 'pendant'],
-        eyewear: ['glasses', 'sunglasses', 'spectacles', 'reading glasses', 'contacts'],
-        personal: ['hair clip', 'hair band', 'belt', 'tie', 'scarf', 'hat', 'cap', 'beanie']
-      },
-      clothing: {
-        tops: ['shirt', 'blouse', 't-shirt', 'tshirt', 'sweater', 'hoodie', 'jacket', 'coat', 'blazer'],
-        bottoms: ['pants', 'jeans', 'shorts', 'skirt', 'dress', 'trousers', 'leggings'],
-        footwear: ['shoes', 'sneakers', 'boots', 'sandals', 'heels', 'flats', 'slippers'],
-        undergarments: ['socks', 'underwear', 'bra', 'stockings']
-      },
-      bags: {
-        daily: ['backpack', 'purse', 'handbag', 'shoulder bag', 'tote bag', 'messenger bag'],
-        travel: ['suitcase', 'luggage', 'duffle bag', 'carry-on', 'briefcase'],
-        small: ['wallet', 'purse', 'clutch', 'coin purse', 'card holder']
-      },
-      keys: ['keys', 'keychain', 'car keys', 'house keys', 'office keys', 'remote', 'key fob', 'access card'],
-      documents: ['id', 'passport', 'license', 'driving license', 'card', 'credit card', 'document', 'paper', 'certificate', 'ticket'],
-      pets: ['dog', 'cat', 'pet', 'animal', 'puppy', 'kitten', 'bird', 'hamster', 'rabbit'],
-      sports: ['ball', 'basketball', 'football', 'soccer ball', 'tennis ball', 'golf ball', 'equipment', 'racket', 'bat'],
-      vehicles: ['car', 'bike', 'bicycle', 'motorcycle', 'scooter', 'skateboard']
-    };
-
-    // Color variations and synonyms
-    this.colorVariations = {
-      red: ['red', 'crimson', 'scarlet', 'burgundy', 'maroon', 'cherry'],
-      blue: ['blue', 'navy', 'azure', 'cobalt', 'turquoise', 'teal', 'cyan'],
-      green: ['green', 'lime', 'olive', 'emerald', 'forest', 'mint'],
-      yellow: ['yellow', 'gold', 'golden', 'amber', 'lemon', 'cream'],
-      black: ['black', 'dark', 'charcoal', 'ebony', 'jet'],
-      white: ['white', 'cream', 'ivory', 'pearl', 'snow'],
-      brown: ['brown', 'tan', 'beige', 'khaki', 'bronze', 'chocolate'],
-      gray: ['gray', 'grey', 'silver', 'ash', 'slate'],
-      purple: ['purple', 'violet', 'lavender', 'plum', 'magenta'],
-      pink: ['pink', 'rose', 'salmon', 'coral', 'fuchsia'],
-      orange: ['orange', 'coral', 'peach', 'tangerine', 'rust']
-    };
-
-    // Size indicators
-    this.sizeTerms = {
-      small: ['small', 'mini', 'tiny', 'little', 'compact', 'petite'],
-      medium: ['medium', 'regular', 'standard', 'normal', 'average'],
-      large: ['large', 'big', 'huge', 'giant', 'oversized', 'xl', 'xxl']
-    };
-
-    // Brand patterns
-    this.commonBrands = [
-      'apple', 'samsung', 'google', 'microsoft', 'sony', 'nike', 'adidas', 'puma',
-      'louis vuitton', 'gucci', 'prada', 'chanel', 'rolex', 'casio', 'fossil',
-      'dell', 'hp', 'lenovo', 'asus', 'acer', 'canon', 'nikon'
-    ];
-  }
-
-  // Enhanced semantic similarity calculation
-  calculateSemanticSimilarity(text1, text2) {
-    const words1 = this.extractKeywords(text1.toLowerCase());
-    const words2 = this.extractKeywords(text2.toLowerCase());
-    
-    let exactMatches = 0;
-    let semanticMatches = 0;
-    let categoryMatches = 0;
-    
-    // Calculate exact word matches
-    words1.forEach(word1 => {
-      if (words2.includes(word1)) {
-        exactMatches++;
-      } else {
-        // Check semantic groups with hierarchical matching
-        this.findSemanticMatches(word1, words2, (match, strength) => {
-          semanticMatches += strength;
-        });
-      }
-    });
-    
-    const totalWords = Math.max(words1.length, words2.length, 1);
-    const exactScore = exactMatches / totalWords;
-    const semanticScore = semanticMatches / totalWords;
-    
-    return Math.min(exactScore + semanticScore * 0.7, 1);
-  }
-
-  // Find semantic matches with different strength levels
-  findSemanticMatches(word, targetWords, callback) {
-    for (const [category, subcategories] of Object.entries(this.semanticGroups)) {
-      if (typeof subcategories === 'object' && !Array.isArray(subcategories)) {
-        // Handle subcategorized groups
-        for (const [subcat, items] of Object.entries(subcategories)) {
-          if (items.includes(word)) {
-            targetWords.forEach(targetWord => {
-              if (items.includes(targetWord) && word !== targetWord) {
-                callback(targetWord, 0.9); // High similarity within same subcategory
-              } else {
-                // Check other subcategories in same category
-                for (const [otherSubcat, otherItems] of Object.entries(subcategories)) {
-                  if (otherSubcat !== subcat && otherItems.includes(targetWord)) {
-                    callback(targetWord, 0.6); // Medium similarity within same category
-                  }
-                }
-              }
-            });
-          }
-        }
-      } else if (Array.isArray(subcategories)) {
-        // Handle simple arrays
-        if (subcategories.includes(word)) {
-          targetWords.forEach(targetWord => {
-            if (subcategories.includes(targetWord) && word !== targetWord) {
-              callback(targetWord, 0.8);
-            }
-          });
-        }
-      }
-    }
-  }
-
-  // Extract meaningful keywords from text
-  extractKeywords(text) {
-    const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'was', 'are', 'were', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their'];
-    return text.split(/\s+/)
-      .filter(word => word.length > 2 && !stopWords.includes(word))
-      .map(word => word.replace(/[^\w]/g, ''));
-  }
-
-  // Enhanced visual similarity with comprehensive analysis
-  calculateVisualSimilarity(post1, post2) {
-    let visualScore = 0;
-    let confidenceFactors = [];
-    
-    // Image presence analysis
-    const post1HasImage = post1.imageData && post1.imageData.length > 1000;
-    const post2HasImage = post2.imageData && post2.imageData.length > 1000;
-    
-    if (post1HasImage && post2HasImage) {
-      visualScore += 0.25;
-      confidenceFactors.push('Both have images');
+// Enhanced notification click handler
+function setupNotificationClickHandler() {
+  document.querySelectorAll('.notification-item').forEach(item => {
+    item.addEventListener('click', async function() {
+      const notificationId = this.dataset.id;
+      const notificationsRef = ref(db, 'notifications');
+      const snapshot = await get(notificationsRef);
+      const data = snapshot.val();
       
-      // Advanced image analysis simulation
-      const imageAnalysis = this.analyzeImageCharacteristics(post1, post2);
-      visualScore += imageAnalysis.score;
-      confidenceFactors.push(...imageAnalysis.factors);
-    } else if (post1HasImage || post2HasImage) {
-      // One has image, use text-based visual cues
-      visualScore += 0.1;
-    }
-    
-    // Color matching with variations
-    const colorMatch = this.calculateColorSimilarity(post1, post2);
-    visualScore += colorMatch.score;
-    if (colorMatch.matches.length > 0) {
-      confidenceFactors.push(`Color match: ${colorMatch.matches.join(', ')}`);
-    }
-    
-    // Size and dimension analysis
-    const sizeMatch = this.calculateSizeSimilarity(post1, post2);
-    visualScore += sizeMatch.score;
-    if (sizeMatch.category) {
-      confidenceFactors.push(`Size category: ${sizeMatch.category}`);
-    }
-    
-    // Material and texture analysis
-    const materialMatch = this.calculateMaterialSimilarity(post1, post2);
-    visualScore += materialMatch.score;
-    if (materialMatch.materials.length > 0) {
-      confidenceFactors.push(`Materials: ${materialMatch.materials.join(', ')}`);
-    }
-    
-    return {
-      score: Math.min(visualScore, 1),
-      factors: confidenceFactors,
-      details: {
-        hasImages: post1HasImage && post2HasImage,
-        colorMatches: colorMatch.matches,
-        sizeCategory: sizeMatch.category,
-        materials: materialMatch.materials
-      }
-    };
-  }
-
-  // Simulate advanced image analysis
-  analyzeImageCharacteristics(post1, post2) {
-    let score = 0;
-    let factors = [];
-    
-    // Image size comparison (basic)
-    const size1 = post1.imageData.length;
-    const size2 = post2.imageData.length;
-    const sizeDiff = Math.abs(size1 - size2) / Math.max(size1, size2);
-    
-    if (sizeDiff < 0.3) {
-      score += 0.15;
-      factors.push('Similar image complexity');
-    }
-    
-    // Image format analysis (basic)
-    const format1 = this.getImageFormat(post1.imageData);
-    const format2 = this.getImageFormat(post2.imageData);
-    
-    if (format1 === format2) {
-      score += 0.05;
-      factors.push(`Same format: ${format1}`);
-    }
-    
-    // Brightness analysis (simulated)
-    const brightness1 = this.estimateBrightness(post1);
-    const brightness2 = this.estimateBrightness(post2);
-    
-    if (Math.abs(brightness1 - brightness2) < 0.3) {
-      score += 0.1;
-      factors.push('Similar lighting conditions');
-    }
-    
-    return { score, factors };
-  }
-
-  // Get image format from data URL
-  getImageFormat(imageData) {
-    if (imageData.includes('data:image/jpeg')) return 'JPEG';
-    if (imageData.includes('data:image/png')) return 'PNG';
-    if (imageData.includes('data:image/gif')) return 'GIF';
-    if (imageData.includes('data:image/webp')) return 'WebP';
-    return 'Unknown';
-  }
-
-  // Estimate brightness from description and context
-  estimateBrightness(post) {
-    const text = (post.title + ' ' + (post.description || '')).toLowerCase();
-    const brightTerms = ['bright', 'light', 'white', 'sunny', 'clear', 'shiny'];
-    const darkTerms = ['dark', 'black', 'shadow', 'dim', 'night', 'evening'];
-    
-    const brightCount = brightTerms.filter(term => text.includes(term)).length;
-    const darkCount = darkTerms.filter(term => text.includes(term)).length;
-    
-    // Return value between 0 (dark) and 1 (bright)
-    return 0.5 + (brightCount - darkCount) * 0.1;
-  }
-
-  // Enhanced color similarity calculation
-  calculateColorSimilarity(post1, post2) {
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedColors = [];
-    let score = 0;
-    
-    // Check for color variations and synonyms
-    for (const [baseColor, variations] of Object.entries(this.colorVariations)) {
-      const post1HasColor = variations.some(color => text1.includes(color));
-      const post2HasColor = variations.some(color => text2.includes(color));
-      
-      if (post1HasColor && post2HasColor) {
-        matchedColors.push(baseColor);
-        score += 0.2; // High score for exact color family match
-      }
-    }
-    
-    // Check for multi-color descriptions
-    const colorPattern = /(multi.*color|rainbow|colorful|various.*color)/i;
-    if (colorPattern.test(text1) && colorPattern.test(text2)) {
-      matchedColors.push('multicolor');
-      score += 0.15;
-    }
-    
-    return {
-      score: Math.min(score, 0.5), // Cap at 0.5 for color matching
-      matches: matchedColors
-    };
-  }
-
-  // Calculate size similarity
-  calculateSizeSimilarity(post1, post2) {
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedCategory = null;
-    let score = 0;
-    
-    for (const [sizeCategory, terms] of Object.entries(this.sizeTerms)) {
-      const post1HasSize = terms.some(term => text1.includes(term));
-      const post2HasSize = terms.some(term => text2.includes(term));
-      
-      if (post1HasSize && post2HasSize) {
-        matchedCategory = sizeCategory;
-        score = 0.15;
-        break;
-      }
-    }
-    
-    // Check for specific measurements (simplified)
-    const measurementPattern = /(\d+)\s*(cm|mm|inch|"|'|ft|meter|m)\b/gi;
-    const measurements1 = text1.match(measurementPattern) || [];
-    const measurements2 = text2.match(measurementPattern) || [];
-    
-    if (measurements1.length > 0 && measurements2.length > 0) {
-      score += 0.1;
-      matchedCategory = matchedCategory || 'measured';
-    }
-    
-    return {
-      score,
-      category: matchedCategory
-    };
-  }
-
-  // Calculate material similarity
-  calculateMaterialSimilarity(post1, post2) {
-    const materials = {
-      metal: ['metal', 'steel', 'aluminum', 'gold', 'silver', 'brass', 'copper', 'iron'],
-      plastic: ['plastic', 'polymer', 'acrylic', 'vinyl', 'pvc'],
-      fabric: ['cotton', 'wool', 'silk', 'polyester', 'nylon', 'denim', 'leather', 'suede'],
-      glass: ['glass', 'crystal', 'transparent', 'clear'],
-      wood: ['wood', 'wooden', 'timber', 'oak', 'pine', 'bamboo'],
-      rubber: ['rubber', 'silicone', 'elastic'],
-      paper: ['paper', 'cardboard', 'card']
-    };
-    
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedMaterials = [];
-    let score = 0;
-    
-    for (const [materialType, terms] of Object.entries(materials)) {
-      const post1HasMaterial = terms.some(term => text1.includes(term));
-      const post2HasMaterial = terms.some(term => text2.includes(term));
-      
-      if (post1HasMaterial && post2HasMaterial) {
-        matchedMaterials.push(materialType);
-        score += 0.1;
-      }
-    }
-    
-    return {
-      score: Math.min(score, 0.3), // Cap at 0.3 for material matching
-      materials: matchedMaterials
-    };
-  }
-
-  // Enhanced brand detection
-  calculateBrandSimilarity(post1, post2) {
-    const text1 = (post1.title + ' ' + (post1.description || '')).toLowerCase();
-    const text2 = (post2.title + ' ' + (post2.description || '')).toLowerCase();
-    
-    let matchedBrands = [];
-    let score = 0;
-    
-    for (const brand of this.commonBrands) {
-      if (text1.includes(brand) && text2.includes(brand)) {
-        matchedBrands.push(brand);
-        score += 0.2; // High score for brand matches
-      }
-    }
-    
-    return {
-      score: Math.min(score, 0.4), // Cap at 0.4 for brand matching
-      brands: matchedBrands
-    };
-  }
-
-  // Add this method to the AIRecommendationEngine class
-  async generateRecommendations(userPosts, postsData) {
-    // userPosts: array of posts created by the user
-    // postsData: all posts in the database (object with postId as key)
-    const recommendations = [];
-    const allPosts = Object.entries(postsData)
-      .map(([id, post]) => ({ id, ...post }))
-      .filter(post => post.user && post.user.uid); // Only posts with a user
-
-    for (const userPost of userPosts) {
-      for (const otherPost of allPosts) {
-        if (userPost.id === otherPost.id) continue; // Skip self
-        if (userPost.user.uid === otherPost.user.uid) continue; // Skip own posts
-        // Only match lost <-> found
-        if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue;
-
-        // Compare text and labels for semantic similarity
-        const userText = userPost.title + ' ' + (userPost.description || '') + ' ' + (userPost.labels || []).join(' ');
-        const otherText = otherPost.title + ' ' + (otherPost.description || '') + ' ' + (otherPost.labels || []).join(' ');
-        const semanticScore = this.calculateSemanticSimilarity(userText, otherText);
-
-        // Compare labels directly for overlap
-        const userLabels = (userPost.labels || []).map(l => l.toLowerCase());
-        const otherLabels = (otherPost.labels || []).map(l => l.toLowerCase());
-        const sharedLabels = userLabels.filter(l => otherLabels.includes(l));
-        const labelScore = sharedLabels.length > 0 ? Math.min(sharedLabels.length / Math.max(userLabels.length, 1), 1) : 0;
-
-        // Visual and other scores
-        const visualScoreObj = this.calculateVisualSimilarity(userPost, otherPost);
-        const visualScore = visualScoreObj.score;
-        const colorScore = this.calculateColorSimilarity(userPost, otherPost).score;
-        const sizeScore = this.calculateSizeSimilarity(userPost, otherPost).score;
-        const brandScore = this.calculateBrandSimilarity(userPost, otherPost).score;
-
-        // Weighted total score (give more weight to text+label match)
-        const totalScore =
-          (semanticScore + labelScore) * (this.weightings.semanticSimilarity + 3) +
-          visualScore * this.weightings.visualSimilarity +
-          colorScore * this.weightings.colorMatch +
-          sizeScore * this.weightings.sizeMatch +
-          brandScore * this.weightings.brandMatch;
-
-        // Categorize match
-        let matchCategory = 'medium';
-        if (totalScore >= 18) matchCategory = 'high';
-        else if (visualScore > 0.5) matchCategory = 'visual';
-
-        // Confidence as percentage
-        const confidence = Math.min(Math.round((totalScore / 30) * 100), 100);
-
-        // Collect matching factors and feedback
-        const matchingFactors = [];
-        if (semanticScore > 0.5) matchingFactors.push('Strong text/description similarity');
-        if (labelScore > 0.3) matchingFactors.push(`Shared label(s): ${sharedLabels.join(', ')}`);
-        if (visualScore > 0.3) matchingFactors.push('Visual similarity');
-        if (colorScore > 0.2) matchingFactors.push('Color match');
-        if (sizeScore > 0.1) matchingFactors.push('Size match');
-        if (brandScore > 0.1) matchingFactors.push('Brand match');
-
-        // User feedback string
-        let feedback = '';
-        if (semanticScore > 0.7 && labelScore > 0.5) {
-          feedback = 'This match is highly relevant based on both text and label similarity.';
-        } else if (semanticScore > 0.7) {
-          feedback = 'This match is highly relevant based on text and description.';
-        } else if (labelScore > 0.5) {
-          feedback = 'This match shares several important labels.';
-        } else if (visualScore > 0.5) {
-          feedback = 'This match looks visually similar.';
-        } else if (matchingFactors.length > 0) {
-          feedback = 'This match shares some similarities.';
-        } else {
-          feedback = 'This match is a possible candidate, but not a strong match.';
-        }
-
-        // Only add if at least one factor is present
-        if (matchingFactors.length > 0) {
-          recommendations.push({
-            userPost,
-            matchedPost: otherPost,
-            totalScore,
-            matchCategory,
-            matchingFactors,
-            confidence,
-            feedback // Add feedback for user
-          });
-        }
-      }
-    }
-    // Sort by confidence descending
-    recommendations.sort((a, b) => b.confidence - a.confidence);
-    return recommendations;
-  }
-}
-
-// Initialize AI Engine
-const aiEngine = new AIRecommendationEngine();
-
-// AI Recommendations UI Management
-async function showAIRecommendations() {
-  console.log('AI Recommendations button clicked');
-  
-  if (!currentUser) {
-    alert("Please log in to use AI recommendations.");
-    return;
-  }
-  console.log('Current user:', currentUser.uid);
-  const section = document.getElementById('aiRecommendationsSection');
-  const grid = document.getElementById('recommendationsGrid');
-  
-  if (!section || !grid) {
-    console.error('AI recommendations UI elements not found');
-    alert('AI recommendations interface not found. Please refresh the page.');
-    return;
-  }
-  
-  // Initialize recommendations array at function scope - before any nested blocks
-  let recommendations = [];
-  
-  try {
-    // Show loading state
-    section.style.display = 'block';
-    grid.innerHTML = `
-      <div class="loading-recommendations">
-        <div class="loading-spinner"></div>
-        <p>AI is analyzing posts...</p>
-      </div>
-    `;    // Get posts data
-    console.log('Fetching posts data...');
-    const postsSnapshot = await get(ref(db, 'posts'));
-    const postsData = postsSnapshot.val();
-    console.log('Posts data retrieved:', postsData ? Object.keys(postsData).length : 0, 'posts');
-    
-    if (!postsData) {
-      grid.innerHTML = '<div class="no-recommendations">No posts available.</div>';
-      return;
-    }
-
-    // Get user's posts
-    const userPosts = Object.entries(postsData)
-      .filter(([, post]) => post.user?.uid === currentUser.uid)
-      .map(([id, post]) => ({ id, ...post }));
-    
-    console.log('User posts found:', userPosts.length);
-
-    if (userPosts.length === 0) {
-      grid.innerHTML = '<div class="no-recommendations">Create a post first to get recommendations.</div>';
-      return;
-    }
-
-    // Check per-user and global quota before running recommendations
-    if (userAIUsageCount() >= AI_USER_LIMIT_PER_HOUR) {
-      grid.innerHTML = '<div class="no-recommendations">You have reached your hourly AI usage limit. Please try again later.</div>';
-      // Instead of blocking the UI, just show the message in the recommendations section and allow the rest of the app to work
-      section.style.display = 'block';
-      return;
-    }
-    const globalUsage = await getGlobalAIUsage();
-    if (globalUsage >= AI_GLOBAL_DAILY_LIMIT) {
-      grid.innerHTML = '<div class="no-recommendations">The daily AI usage limit for this app has been reached. Please try again tomorrow.</div>';
-      section.style.display = 'block';
-      return;    }
-    
-    // Test AI connection and generate recommendations
-    let aiConnectionTested = false;
-    let aiError = null;
-    let useOpenAI = false;
-    let globalRateLimitHit = false; // Track if we've hit rate limits globally
-    
-    // 🎯 CREDIT SAVING: Cache API results to prevent duplicate calls
-    const apiCache = new Map();
-      try {
-      // 🤖 AI MODE: Test OpenAI connection and enable API usage
-      console.log('🤖 AI Mode: Testing OpenAI connection...');
-      
-      grid.innerHTML = '<div class="loading-recommendations">🤖 Testing OpenAI connection and analyzing posts...</div>';
-      
-      // Test OpenAI connection first
-      const connectionTest = await testOpenAIConnection();
-      if (connectionTest.success) {
-        console.log('✅ OpenAI connection successful');
-        aiConnectionTested = true;
-        useOpenAI = true; // Enable OpenAI for better matching
-        grid.innerHTML = '<div class="success-recommendations">✅ OpenAI connected successfully! Using AI-powered matching...</div>';
-      } else {
-        console.warn('⚠️ OpenAI connection failed, falling back to smart matching:', connectionTest.error);
-        aiConnectionTested = false;
-        useOpenAI = false;
-        grid.innerHTML = '<div class="warning-recommendations">⚠️ OpenAI unavailable, using smart matching algorithm...</div>';
-      }
-      
-      // Get all posts for comparison
-      const allPosts = Object.entries(postsData)
-        .map(([id, post]) => ({ id, ...post }))
-        .filter(post => post.user && post.user.uid);
-      
-      console.log('Analyzing', userPosts.length, 'user posts against', allPosts.length, 'total posts');
-      console.log('User posts:', userPosts.map(p => `${p.title} (${p.type})`));
-      console.log('All posts:', allPosts.map(p => `${p.title} (${p.type}) - User: ${p.user?.uid}`));
-      
-      let apiCallCount = 0;
-      const MAX_API_CALLS = useOpenAI ? 10 : 0; // Allow up to 10 API calls if OpenAI is working
-      
-      for (const userPost of userPosts) {
-        for (const otherPost of allPosts) {
-          if (userPost.id === otherPost.id) continue; // Skip self
-          if (userPost.user.uid === otherPost.user.uid) continue; // Skip own posts
-          // Only match lost <-> found
-          if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue;
-
-          console.log(`Analyzing: "${userPost.title}" (${userPost.type}) vs "${otherPost.title}" (${otherPost.type})`);
-          
-          let matchScore = 0;
-          let matchingFactors = [];
-          let feedback = '';
-          let usedOpenAI = false;          // 🤖 SMART PRE-FILTERING: Use different thresholds based on AI availability
-          const preFilterScore = calculateSmartSimilarity(userPost, otherPost);
-          const shouldUseOpenAI = useOpenAI ? preFilterScore > 0.1 : false; // Lower threshold when AI is available
-          
-          console.log(`Pre-filter score: ${preFilterScore} - ${shouldUseOpenAI ? 'Using OpenAI' : 'Skipping OpenAI'} (AI enabled: ${useOpenAI})`);
-
-          if (useOpenAI && !globalRateLimitHit && apiCallCount < MAX_API_CALLS && shouldUseOpenAI) {
-            try {              console.log(`Making OpenAI API call ${apiCallCount + 1}/${MAX_API_CALLS} for posts:`, userPost.title, 'vs', otherPost.title);
-              
-              // Add moderate delay between API calls to respect rate limits
-              if (apiCallCount > 0) {
-                console.log('Waiting 3 seconds before next API call to respect rate limits...');
-                await new Promise(resolve => setTimeout(resolve, 3000)); // Reduced to 3 seconds for faster processing
-              }
-                // Call OpenAI API for similarity analysis
-              const similarity = await analyzeSimilarity(userPost, otherPost);
-              apiCallCount++;
-              usedOpenAI = true;
-              
-              // Track API usage
-              incrementUserAIUsage();
-              await incrementGlobalAIUsage();
-              
-              console.log('🤖 OpenAI similarity result:', similarity);
-                // Handle different types of errors gracefully
-              if (similarity?.error === 'rate_limited' || 
-                  similarity?.error === 'max_retries' ||
-                  (similarity?.textSimilarity && similarity.textSimilarity.error === 'max_retries')) {
-                console.warn('Rate limit hit, disabling OpenAI for all remaining comparisons');
-                globalRateLimitHit = true;
-                useOpenAI = false;
-                matchScore = calculateSmartSimilarity(userPost, otherPost);
-                matchingFactors = getMatchingFactors(userPost, otherPost);
-                feedback = 'Smart text-based matching (API rate limited)';
-              } else if (similarity?.error === 'quota_exceeded' || 
-                         similarity?.textSimilarity?.error === 'quota_exceeded') {
-                console.error('🚨 OpenAI quota exceeded:', similarity.message || similarity.textSimilarity?.message);
-                globalRateLimitHit = true;
-                useOpenAI = false;
-                matchScore = calculateSmartSimilarity(userPost, otherPost);
-                matchingFactors = getMatchingFactors(userPost, otherPost);
-                feedback = 'Smart text-based matching (OpenAI quota exceeded)';
-                
-                // Show user-friendly message about quota
-                if (!document.querySelector('.quota-warning')) {
-                  const warningDiv = document.createElement('div');
-                  warningDiv.className = 'quota-warning no-recommendations';
-                  warningDiv.innerHTML = '⚠️ OpenAI usage quota exceeded. Please check your billing at <a href="https://platform.openai.com/account/billing" target="_blank">OpenAI Platform</a>. Using smart matching instead.';
-                  grid.prepend(warningDiv);
-                }              } else if (similarity && !similarity.error && similarity.overallScore > 0.05) { // Even lower threshold for AI
-                matchScore = similarity.overallScore;
-                matchingFactors = [
-                  `🤖 AI Text similarity: ${Math.round((similarity.textSimilarity || 0) * 100)}%`,
-                  similarity.imageSimilarity?.similarity_score ? `🖼️ AI Image similarity: ${Math.round(similarity.imageSimilarity.similarity_score * 100)}%` : null
-                ].filter(Boolean);
-                feedback = '🤖 AI-powered similarity analysis';
-              } else if (similarity?.error) {
-                console.log('OpenAI API error:', similarity.error);
-                // Fall back to smart matching for this pair
-                matchScore = calculateSmartSimilarity(userPost, otherPost);
-                matchingFactors = getMatchingFactors(userPost, otherPost);
-                feedback = 'Smart text-based matching (API error fallback)';
-              }
-            } catch (apiError) {
-              console.error('OpenAI API call failed:', apiError);
-              // Fall back to smart matching for this pair
-              matchScore = calculateSmartSimilarity(userPost, otherPost);
-              matchingFactors = getMatchingFactors(userPost, otherPost);
-              feedback = 'Smart text-based matching (API call failed)';
-                       }          } else {
-            // Use smart matching algorithm
-            matchScore = calculateSmartSimilarity(userPost, otherPost);
-            matchingFactors = getMatchingFactors(userPost, otherPost);
-            feedback = useOpenAI ? 
-              'Smart text-based matching (pre-filter: score too low for AI)' : 
-              '📊 Smart text-based matching algorithm';
-          }
-            if (matchScore > 0.05) { // Very low threshold to capture more potential matches
-            console.log(`Found match with score: ${matchScore} between "${userPost.title}" and "${otherPost.title}"`);
-            recommendations.push({
-              userPost,
-              matchedPost: otherPost,
-              totalScore: matchScore * 100,
-              matchCategory: matchScore > 0.6 ? 'high' : (matchScore > 0.3 ? 'medium' : 'potential'),
-              matchingFactors: matchingFactors,
-              confidence: Math.round(matchScore * 100),
-              feedback: feedback,
-              usedOpenAI: usedOpenAI
-            });
-          } else {
-            console.log(`Low similarity score: ${matchScore} between "${userPost.title}" and "${otherPost.title}"`);
-          }
-        }
-      }
-      
-    } catch (error) {
-      console.error('Error in recommendation generation:', error);
-      grid.innerHTML = '<div class="no-recommendations">Error generating recommendations. Using basic matching algorithm.</div>';
-      
-      // Fallback to basic recommendations
-      const allPosts = Object.entries(postsData)
-        .map(([id, post]) => ({ id, ...post }))
-        .filter(post => post.user && post.user.uid);
-      
-      for (const userPost of userPosts) {
-        for (const otherPost of allPosts) {
-          if (userPost.id === otherPost.id) continue;
-          if (userPost.user.uid === otherPost.user.uid) continue;
-          if (!userPost.type || !otherPost.type || userPost.type === otherPost.type) continue;
-          
-          const basicScore = calculateBasicSimilarity(userPost, otherPost);
-          if (basicScore > 0.5) {
-            recommendations.push({
-              userPost,
-              matchedPost: otherPost,
-              totalScore: basicScore * 100,
-              matchCategory: 'potential',
-              matchingFactors: ['Basic text matching'],
-              confidence: Math.round(basicScore * 100),
-              feedback: 'Basic matching algorithm'
-            });
-          }
-        }
-      }
-    }    
-    window.currentRecommendations = recommendations;
-      // Display recommendations
-    if (recommendations.length > 0) {
-      // Count AI vs non-AI recommendations for reporting
-      const aiRecommendations = recommendations.filter(rec => rec.usedOpenAI).length;
-      const smartRecommendations = recommendations.length - aiRecommendations;
-      
-      const recommendationCards = recommendations.map(rec => createRecommendationCard(rec)).join('');
-      
-      // Add summary header
-      const summaryHtml = `
-        <div class="recommendations-summary">
-          <h3>🎯 Found ${recommendations.length} potential matches</h3>
-          ${aiRecommendations > 0 ? 
-            `<p>🤖 ${aiRecommendations} AI-powered matches • 📊 ${smartRecommendations} smart algorithm matches</p>` :
-            `<p>📊 All matches generated using smart algorithm${useOpenAI ? ' (OpenAI available but not needed)' : ''}</p>`
-          }
-        </div>
-      `;
-      
-      grid.innerHTML = summaryHtml + recommendationCards;
-      console.log(`✅ Displayed ${recommendations.length} recommendations (${aiRecommendations} AI-powered, ${smartRecommendations} smart matching)`);
-    } else {
-      const noRecMessage = aiConnectionTested 
-        ? `<div class="no-recommendations">
-            <h3>No matching items found</h3>
-            <p>${useOpenAI ? '🤖 AI analysis complete' : '📊 Smart analysis complete'} - Try creating more detailed posts or checking back later for new posts!</p>
-           </div>`
-        : `<div class="no-recommendations">
-            <h3>No matches found</h3>
-            <p>📊 Smart algorithm analysis complete - Try creating more detailed posts!</p>
-           </div>`;
-      grid.innerHTML = noRecMessage;
-    }  } catch (error) {
-    console.error('Error in AI recommendations:', error);
-    
-    // Provide specific error feedback
-    let errorMessage = 'Error loading recommendations.';
-    if (error.message?.includes('network') || error.code === 'NETWORK_ERROR') {
-      errorMessage = '🌐 Network error - Please check your internet connection and try again.';
-    } else if (error.message?.includes('quota') || error.message?.includes('billing')) {
-      errorMessage = '💳 OpenAI quota exceeded - Please check your billing at <a href="https://platform.openai.com/account/billing" target="_blank">OpenAI Platform</a>.';
-    } else if (error.message?.includes('rate')) {
-      errorMessage = '⏱️ API rate limit reached - Please try again in a few minutes.';
-    } else {
-      errorMessage = '❌ Unexpected error - Please try again later.';
-    }
-    
-    grid.innerHTML = `<div class="no-recommendations error-message">${errorMessage}</div>`;
-  }
-}
-
-// Test OpenAI connection with a simple test
-async function testOpenAIConnection() {
-  try {
-    // Use a simpler endpoint that's less likely to be rate limited
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.openai.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [{
-          role: "user",
-          content: "test"
-        }],
-        max_tokens: 1
-      })
-    });    if (!response.ok) {
-      if (response.status === 429) {
-        // Check if it's a quota issue
-        const errorText = await response.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { error: { message: errorText } };
-        }
-
-        if (errorData.error?.code === 'insufficient_quota' || 
-            errorData.error?.message?.includes('quota') ||
-            errorData.error?.message?.includes('billing')) {
-          console.error('OpenAI quota exceeded:', errorData.error.message);
-          return { success: false, error: 'OpenAI quota exceeded. Please check your billing and usage limits.' };
+      if (data && data[notificationId]) {
+        const notification = { ...data[notificationId], id: notificationId };
+        
+        // Mark as read
+        await update(ref(db, `notifications/${notificationId}`), { read: true });
+        
+        // Show detailed notification
+        await showNotificationDetail(notification);
+        if (notificationDetailModal) {
+          notificationDetailModal.style.display = 'flex';
         }
         
-        // Regular rate limiting - API key is still valid
-        console.log('OpenAI API rate limited, but key is valid - proceeding with API usage');
-        return { success: true, note: 'Rate limited but valid key' };
+        // Refresh notifications to update read status
+        loadNotifications();
       }
-      if (response.status === 401) {
-        return { success: false, error: 'OpenAI API key authentication failed' };
-      }
-      if (response.status === 404) {
-        return { success: false, error: 'OpenAI API endpoint not found' };
-      }
-      // For other errors, assume the key might still be valid
-      console.log(`OpenAI API returned ${response.status}, but proceeding anyway`);
-      return { success: true, note: `HTTP ${response.status} but proceeding` };
-    }
-
-    const data = await response.json();
-    console.log('OpenAI connection test successful:', data.id || 'no ID');
-    return { success: true };
-    
-  } catch (error) {
-    console.error('OpenAI connection test error:', error);
-    // Network errors might be temporary - try to proceed anyway if we have a valid-looking key
-    if (config.openai.apiKey && config.openai.apiKey.startsWith('sk-') && config.openai.apiKey.length > 40) {
-      console.log('Network error in test, but API key looks valid - proceeding');
-      return { success: true, note: 'Network error but valid-looking key' };
-    }
-    return { success: false, error: 'Network error connecting to OpenAI API' };
-  }
-}
-
-// Direct OpenAI API test function
-window.testDirectOpenAI = async function() {
-  console.log('🧪 Testing direct OpenAI API call...');
-  
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.openai.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [{
-          role: "system", 
-          content: "You are a helpful assistant. Respond with just the word 'SUCCESS' to confirm the API is working."
-        }, {
-          role: "user",
-          content: "Test message"
-        }],
-        max_tokens: 10
-      })
     });
-
-    console.log('API Response status:', response.status);
-    console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error Response:', errorText);
-      return { 
-        success: false, 
-        error: `HTTP ${response.status}: ${errorText}`,
-        status: response.status 
-      };
-    }
-
-    const data = await response.json();
-    console.log('API Response data:', data);
-    
-    return { 
-      success: true, 
-      response: data,
-      message: data.choices?.[0]?.message?.content || 'No content'
-    };
-    
-  } catch (error) {
-    console.error('Direct API test error:', error);
-    return { 
-      success: false, 
-      error: error.message,
-      type: 'network_error'
-    };
-  }
-};
-
-// Smart similarity calculation without API calls
-function calculateSmartSimilarity(post1, post2) {
-  const text1 = `${post1.title || ''} ${post1.description || ''} ${(post1.labels || []).join(' ')}`.toLowerCase();
-  const text2 = `${post2.title || ''} ${post2.description || ''} ${(post2.labels || []).join(' ')}`.toLowerCase();
-  
-  console.log(`Calculating similarity between:
-    Post 1: "${text1}" (${post1.type})
-    Post 2: "${text2}" (${post2.type})`);
-  
-  // Enhanced multilingual word matching
-  const multilingual = {
-    // Pen translations
-    pen: ['pen', 'boli', 'bolígrafo', 'stylo', 'penna'],
-    // Color translations
-    red: ['red', 'rojo', 'rouge', 'vermell', 'roig', 'rosso'],
-    blue: ['blue', 'azul', 'bleu', 'blau', 'blu'],
-    black: ['black', 'negro', 'noir', 'negre', 'nero'],
-    // Phone translations
-    phone: ['phone', 'móvil', 'celular', 'telefono', 'iphone', 'android'],
-    // Common items
-    keys: ['keys', 'llaves', 'clés', 'claus', 'chiavi'],
-    wallet: ['wallet', 'cartera', 'portefeuille', 'cartera', 'portafoglio']
-  };
-    // Calculate word overlap with multilingual support
-  const words1 = text1.split(/\s+/).filter(word => word.length > 2);
-  const words2 = text2.split(/\s+/).filter(word => word.length > 2);
-  
-  console.log(`  Words extracted:
-    Post 1 words: [${words1.join(', ')}]
-    Post 2 words: [${words2.join(', ')}]`);
-  
-  if (words1.length === 0 || words2.length === 0) return 0;
-  
-  let semanticMatches = 0;
-  let directMatches = 0;
-  
-  // Check for direct word matches
-  const commonWords = words1.filter(word => words2.includes(word));
-  directMatches = commonWords.length;
-  
-  // Check for semantic/multilingual matches
-  for (const word1 of words1) {
-    for (const word2 of words2) {
-      if (word1 === word2) continue; // Already counted in direct matches
-      
-      // Check if words are in the same semantic group
-      for (const [concept, translations] of Object.entries(multilingual)) {
-        if (translations.includes(word1) && translations.includes(word2)) {
-          semanticMatches++;
-          console.log(`  Semantic match found: "${word1}" ↔ "${word2}" (${concept})`);
-          break;
-        }
-      }
-    }
-  }
-  
-  const totalMatches = directMatches + semanticMatches;
-  const wordOverlap = totalMatches / Math.max(words1.length, words2.length);
-  
-  console.log(`  Word analysis: ${directMatches} direct + ${semanticMatches} semantic = ${totalMatches}/${Math.max(words1.length, words2.length)} = ${wordOverlap}
-    Direct matches: [${commonWords.join(', ')}]`);
-  
-  // Calculate location similarity if available
-  let locationScore = 0;
-  if (post1.location && post2.location) {
-    const loc1 = post1.location.toLowerCase();
-    const loc2 = post2.location.toLowerCase();
-    if (loc1 === loc2) locationScore = 0.4; // Increased from 0.3
-    else if (loc1.includes(loc2) || loc2.includes(loc1)) locationScore = 0.3; // Increased from 0.2
-    console.log(`  Location similarity: ${locationScore} (${loc1} vs ${loc2})`);
-  }
-  
-  // Calculate label similarity
-  let labelScore = 0;
-  if (post1.labels && post2.labels && post1.labels.length > 0 && post2.labels.length > 0) {
-    const labels1 = post1.labels.map(l => l.toLowerCase());
-    const labels2 = post2.labels.map(l => l.toLowerCase());
-    const commonLabels = labels1.filter(label => labels2.includes(label));
-    labelScore = commonLabels.length / Math.max(labels1.length, labels2.length) * 0.3; // Increased from 0.2
-    console.log(`  Label similarity: ${labelScore} (common: [${commonLabels.join(', ')}])`);
-  }
-  
-  // Add bonus for opposite types (lost <-> found)
-  let typeBonus = 0;
-  if ((post1.type === 'lost' && post2.type === 'found') || (post1.type === 'found' && post2.type === 'lost')) {
-    typeBonus = 0.1; // Small bonus for complementary types
-    console.log(`  Type bonus: ${typeBonus} (${post1.type} <-> ${post2.type})`);  }
-  
-  // Enhanced total score calculation with better weighting
-  const baseScore = wordOverlap * 0.6; // Give more weight to word matches
-  const bonusScore = locationScore + labelScore + typeBonus;
-  const totalScore = Math.min(baseScore + bonusScore, 1.0);
-  
-  console.log(`  Score breakdown:
-    - Word similarity: ${wordOverlap} * 0.6 = ${baseScore}
-    - Location bonus: ${locationScore}
-    - Label bonus: ${labelScore}
-    - Type bonus: ${typeBonus}
-    - Final score: ${totalScore}`);
-  
-  return totalScore;
-}
-
-// Basic similarity calculation
-function calculateBasicSimilarity(post1, post2) {
-  const title1 = (post1.title || '').toLowerCase();
-  const title2 = (post2.title || '').toLowerCase();
-  
-  if (title1.includes(title2) || title2.includes(title1)) return 0.8;
-  
-  const words1 = title1.split(/\s+/);
-  const words2 = title2.split(/\s+/);
-  const commonWords = words1.filter(word => words2.includes(word) && word.length > 2);
-  
-  return commonWords.length / Math.max(words1.length, words2.length, 1);
-}
-
-// Get matching factors for display
-function getMatchingFactors(post1, post2) {
-  const factors = [];
-  
-  const text1 = `${post1.title || ''} ${post1.description || ''}`.toLowerCase();
-  const text2 = `${post2.title || ''} ${post2.description || ''}`.toLowerCase();
-  
-  const words1 = text1.split(/\s+/).filter(word => word.length > 2);
-  const words2 = text2.split(/\s+/).filter(word => word.length > 2);
-  const commonWords = words1.filter(word => words2.includes(word));
-  
-  if (commonWords.length > 0) {
-    factors.push(`Common keywords: ${commonWords.slice(0, 3).join(', ')}`);
-  }
-  
-  if (post1.location && post2.location) {
-    const loc1 = post1.location.toLowerCase();
-    const loc2 = post2.location.toLowerCase();
-    if (loc1 === loc2) {
-      factors.push(`Same location: ${post1.location}`);
-    } else if (loc1.includes(loc2) || loc2.includes(loc1)) {
-      factors.push(`Similar location area`);
-    }
-  }
-  
-  if (post1.labels && post2.labels) {
-    const labels1 = post1.labels.map(l => l.toLowerCase());
-    const labels2 = post2.labels.map(l => l.toLowerCase());
-    const commonLabels = labels1.filter(label => labels2.includes(label));
-    if (commonLabels.length > 0) {
-      factors.push(`Matching tags: ${commonLabels.join(', ')}`);
-    }
-  }
-    return factors.length > 0 ? factors : ['Text similarity detected'];
-}
-
-function renderRecommendations(recommendations, filter = 'all') {
-  const grid = document.getElementById('recommendationsGrid');
-  
-  // Filter recommendations based on selected filter
-  let filteredRecs = recommendations;
-  if (filter !== 'all') {
-    filteredRecs = recommendations.filter(rec => rec.matchCategory === filter);
-  }
-  
-  if (filteredRecs.length === 0) {
-    grid.innerHTML = `
-      <div class="no-recommendations">
-        <i class="fas fa-filter"></i>
-        <h3>No matches in this category</h3>
-        <p>Try selecting a different filter or check "All Recommendations".</p>
-      </div>
-    `;
-    return;
-  }
-  
-  grid.innerHTML = filteredRecs.map(rec => createRecommendationCard(rec)).join('');
-}
-
-function createRecommendationCard(recommendation) {
-  const { userPost, matchedPost, totalScore, matchCategory, matchingFactors, confidence, feedback } = recommendation;
-  const scorePercentage = Math.round(confidence);
-  const scoreClass = matchCategory;
-  return `
-    <div class="recommendation-card" data-category="${matchCategory}">
-      <div class="recommendation-header">
-        <div class="match-score score-${scoreClass}">
-          <i class="fas fa-star"></i>
-          <span>${scorePercentage}% Match</span>
-        </div>
-        <div class="score-bar">
-          <div class="score-fill ${scoreClass}" style="width: ${scorePercentage}%"></div>
-        </div>
-      </div>
-      <div class="recommendation-content">
-        <div class="post-preview">
-          <div class="post-type ${userPost.type}">${userPost.type.toUpperCase()}</div>
-          <div class="post-title">${escapeHtml(userPost.title)}</div>
-          ${userPost.imageData ? `<img src="${userPost.imageData}" alt="${escapeHtml(userPost.title)}" class="post-image" onerror="this.onerror=null;this.src='default-image.png';" />` : ''}
-        </div>
-        <div class="post-preview">
-          <div class="post-type ${matchedPost.type}">${matchedPost.type.toUpperCase()}</div>
-          <div class="post-title">${escapeHtml(matchedPost.title)}</div>
-          ${matchedPost.imageData ? `<img src="${matchedPost.imageData}" alt="${escapeHtml(matchedPost.title)}" class="post-image" onerror="this.onerror=null;this.src='default-image.png';" />` : ''}
-        </div>
-      </div>
-      <div class="ai-feedback" style="margin:1rem 0 0.5rem 0; color:#4a4a4a; font-size:1.08rem; font-weight:500; background:#f6fafd; border-radius:8px; padding:0.7rem 1.2rem;">
-        <i class="fas fa-info-circle" style="color:#3498db;"></i> ${escapeHtml(feedback)}
-      </div>
-      <div class="match-factors">
-        <h4><i class="fas fa-link"></i> Matching Factors</h4>
-        <div class="factor-list">
-          ${matchingFactors.map(factor => `<span class="factor-tag">${escapeHtml(factor)}</span>`).join('')}
-        </div>
-      </div>
-      <div class="recommendation-actions">
-        <button class="rec-btn rec-btn-primary" onclick="viewRecommendedPost('${matchedPost.id}')">
-          <i class="fas fa-eye"></i> View Details
-        </button>
-        <button class="rec-btn rec-btn-secondary" onclick="contactForRecommendation('${matchedPost.id}', '${userPost.id}')">
-          <i class="fas fa-comment"></i> Contact
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-function updateAIInsights(recommendations) {
-  const insightsContent = document.getElementById('aiInsightsContent');
-  
-  const totalRecs = recommendations.length;
-  const highMatches = recommendations.filter(r => r.matchCategory === 'high').length;
-  const mediumMatches = recommendations.filter(r => r.matchCategory === 'medium').length;
-  const visualMatches = recommendations.filter(r => r.matchCategory === 'visual').length;
-  
-  const avgConfidence = recommendations.reduce((sum, r) => sum + r.confidence, 0) / totalRecs;
-  
-  insightsContent.innerHTML = `
-    <div style="margin-bottom: 1rem;">
-      <p><strong>Analysis Summary:</strong></p>
-      <p>Found ${totalRecs} potential matches with an average confidence of ${Math.round(avgConfidence)}%</p>
-    </div>
-    
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-      <div style="background: #e8f5e8; padding: 1rem; border-radius: 8px; text-align: center;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: #27ae60;">${highMatches}</div>
-               <div style="color: #27ae60;">High Matches</div>
-      </div>
-      <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; text-align: center;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: #f39c12;">${mediumMatches}</div>
-        <div style="color: #f39c12;">Medium Matches</div>
-      </div>
-      <div style="background: #f3e5f5; padding: 1rem; border-radius: 8px; text-align: center;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: #9b59b6;">${visualMatches}</div>
-        <div style="color: #9b59b6;">Visual Matches</div>
-      </div>
-    </div>
-    
-    <p>The AI analyzes multiple factors to find the best matches:</p>
-    <ul>
-      <li><i class="fas fa-tag"></i> Tag similarity and semantic meaning</li>
-      <li><i class="fas fa-font"></i> Text description analysis</li>
-      <li><i class="fas fa-image"></i> Visual characteristics comparison</li>
-      <li><i class="fas fa-map-marker-alt"></i> Location proximity</li>
-      <li><i class="fas fa-clock"></i> Temporal relevance</li>
-    </ul>
-  `;
-}
-
-// Update: Show a message if no AI recommendations are found
-function renderAIRecommendations(recommendations) {
-  const recommendationsGrid = document.getElementById('recommendationsGrid');
-  recommendationsGrid.innerHTML = '';
-  if (!recommendations || recommendations.length === 0) {
-    recommendationsGrid.innerHTML = '<div class="no-recommendations">No AI recommendations found. Try creating or updating your posts for better matches!</div>';
-    return;
-  }
-
-  recommendationsGrid.innerHTML = recommendations.map(rec => createRecommendationCard(rec)).join('');
-}
-
-// Global functions for recommendation interactions
-window.viewRecommendedPost = (postId) => {
-  window.location.href = `post-details.html?id=${encodeURIComponent(postId)}`;
-};
-
-window.contactForRecommendation = async (postId, userPostId) => {
-  // Open claim modal for the recommended post
-  window.openClaimModal(postId);
-};
-
-// Initialize event handlers for AI recommendations (consolidated)
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, setting up AI recommendations button');
-  
-  // AI Recommendations button
-  const aiRecommendationsBtn = document.getElementById('aiRecommendationsBtn');
-  if (aiRecommendationsBtn) {
-    console.log('AI recommendations button found, adding event listener');
-    aiRecommendationsBtn.addEventListener('click', showAIRecommendations);
-  } else {
-    console.error('AI recommendations button not found');
-  }
-  
-  // Filter buttons for recommendations
-  const recommendationFilters = document.querySelector('.recommendation-filters');
-  if (recommendationFilters) {
-    recommendationFilters.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('filter-btn')) return;
-
-      // Update active filter
-      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-      e.target.classList.add('active');
-        // Get current recommendations and re-render with filter
-      const filter = e.target.dataset.filter;
-      const currentRecs = window.currentRecommendations || [];
-      renderRecommendations(currentRecs, filter);
-    });
-  }
-});
-
-// Store recommendations globally for filtering
-window.currentRecommendations = [];
-
-// Debug functions for testing (can be called from browser console)
-window.testAIRecommendations = showAIRecommendations;
-window.testConfig = () => {
-  console.log('Testing config availability...');
-  import('../config.js').then(configModule => {
-    console.log('Config loaded:', configModule.config);
-    console.log('OpenAI API Key present:', !!configModule.config?.openai?.apiKey);
-  }).catch(err => {
-    console.error('Error loading config:', err);
   });
-};
+}
 
-// Debug and test functions for browser console
-window.debugAI = {
-  // Test OpenAI connection
-  async testConnection() {
-    console.log('Testing OpenAI connection...');
-    const result = await testOpenAIConnection();
-    console.log('Connection test result:', result);
-    return result;
-  },
-  
-  // Test smart similarity algorithm
-  testSmartSimilarity() {
-    console.log('Testing smart similarity algorithm...');
-    const post1 = {
-      title: "Lost iPhone 13 Pro",
-      description: "Black iPhone 13 Pro lost at Central Park",
-      labels: ["phone", "apple", "black"],
-      location: "Central Park, NYC",
-      type: "lost"
-    };
-    
-    const post2 = {
-      title: "Found iPhone 13",
-      description: "Found a black iPhone at Central Park near the lake",
-      labels: ["phone", "apple"],
-      location: "Central Park, NYC",
-      type: "found"
-    };
-    
-    const score = calculateSmartSimilarity(post1, post2);
-    const factors = getMatchingFactors(post1, post2);
-    
-    console.log('Test posts similarity score:', score);
-    console.log('Matching factors:', factors);
-    
-    return { score, factors, post1, post2 };
-  },
-  
-  // Test the full recommendation flow
-  async testRecommendations() {
-    console.log('Testing AI recommendations flow...');
-    if (!currentUser) {
-      console.log('No user logged in - simulating login...');
-      // For testing purposes, create a mock user
-      window.currentUser = { uid: 'test-user-123' };
-    }
-    
-    try {
-      await showAIRecommendations();
-      console.log('AI recommendations test completed');
-    } catch (error) {
-      console.error('AI recommendations test failed:', error);
-    }
-  },
-    // Check current configuration
-  checkConfig() {
-    console.log('Current configuration:');
-    console.log('- OpenAI API Key (first 20 chars):', config?.openai?.apiKey?.substring(0, 20) + '...');
-    console.log('- Firebase config loaded:', !!config?.firebase);
-    console.log('- Current user:', currentUser?.uid || 'Not logged in');
-    console.log('- AI usage count:', userAIUsageCount());
-    
-    return {
-      hasOpenAIKey: !!config?.openai?.apiKey,
-      hasFirebaseConfig: !!config?.firebase,
-      currentUser: currentUser?.uid || null,
-      aiUsageCount: userAIUsageCount()
-    };
-  },
-  
-  // Test AI usage tracking functions
-  async testUsageTracking() {
-    console.log('Testing AI usage tracking...');
-    
-    const initialCount = userAIUsageCount();
-    console.log('Initial user AI usage count:', initialCount);
-    
-    const initialGlobal = await getGlobalAIUsage();
-    console.log('Initial global AI usage count:', initialGlobal);
-    
-    // Test increment
-    incrementUserAIUsage();
-    const newCount = userAIUsageCount();
-    console.log('After increment - user AI usage count:', newCount);
-    
-    const newGlobal = await incrementGlobalAIUsage();
-    console.log('After increment - global AI usage count:', newGlobal);
-    
-    // Test limits
-    console.log('User limit:', AI_USER_LIMIT_PER_HOUR);
-    console.log('Global limit:', AI_GLOBAL_DAILY_LIMIT);
-    console.log('User within limit:', newCount < AI_USER_LIMIT_PER_HOUR);
-    console.log('Global within limit:', newGlobal < AI_GLOBAL_DAILY_LIMIT);
-    
-    return {
-      userCount: newCount,
-      globalCount: newGlobal,
-      userLimit: AI_USER_LIMIT_PER_HOUR,
-      globalLimit: AI_GLOBAL_DAILY_LIMIT,
-      userWithinLimit: newCount < AI_USER_LIMIT_PER_HOUR,
-      globalWithinLimit: newGlobal < AI_GLOBAL_DAILY_LIMIT
-    };
-  },
-  
-  // Show current recommendations if any
-  showCurrentRecommendations() {
-    if (window.currentRecommendations && window.currentRecommendations.length > 0) {
-      console.log('Current recommendations:', window.currentRecommendations.length);
-      window.currentRecommendations.forEach((rec, index) => {
-        console.log(`${index + 1}. ${rec.userPost.title} -> ${rec.matchedPost.title} (${rec.confidence}% match)`);
-      });
-      return window.currentRecommendations;
-    } else {
-      console.log('No recommendations currently available');
-      return [];
-    }
-  },
-  
-  // Test function to create sample posts for debugging
-  async createTestPosts() {
-    if (!currentUser) {
-      console.log('No user logged in');
-      return;
-    }
-    
-    console.log('Creating test posts...');
-    
-    // Create a lost item post
-    const lostPost = {
-      title: "Lost iPhone 13 Pro",
-      description: "Black iPhone 13 Pro lost near Central Park",
-      type: "lost",
-      location: "Central Park, NYC",
-      labels: ["phone", "apple", "black", "electronics"],
-      user: {
-        uid: currentUser.uid,
-        username: "testuser"
-      },
-      timestamp: Date.now()
-    };
-    
-    // Create a found item post (different user)
-    const foundPost = {
-      title: "Found iPhone 13",
-      description: "Found a black iPhone near the park entrance",
-      type: "found", 
-      location: "Central Park, NYC",
-      labels: ["phone", "apple", "black"],
-      user: {
-        uid: "different-user-123",
-        username: "otheruser"
-      },
-      timestamp: Date.now()
-    };
-    
-    try {
-      await push(ref(db, 'posts'), lostPost);
-      await push(ref(db, 'posts'), foundPost);
-      console.log('✅ Test posts created successfully!');
-      console.log('Lost post:', lostPost);
-      console.log('Found post:', foundPost);
-    } catch (error) {
-      console.error('❌ Error creating test posts:', error);
-    }
-  }
-};
 
-console.log('🔧 AI Debug functions loaded! Use window.debugAI in console:');
-console.log('- debugAI.testConnection() - Test OpenAI API connection');
-console.log('- debugAI.testSmartSimilarity() - Test similarity algorithm');
-console.log('- debugAI.testRecommendations() - Test full recommendation flow');
-console.log('- debugAI.checkConfig() - Check current configuration');
-console.log('- debugAI.testUsageTracking() - Test AI usage tracking functions');
-console.log('- debugAI.showCurrentRecommendations() - Show current recommendations');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getDatabase, ref, get, update, set, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+import { getDatabase, ref, get, update, set, push, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -23,6 +23,11 @@ let matchedWithId = null;
 // Claim functionality variables
 let currentClaimPostId = null;
 let currentClaimPost = null;
+
+// Chat functionality variables
+let currentChatId = null;
+let currentChatPartner = null;
+let currentChatPost = null;
 
 function escapeHtml(text) {
   if (!text) return "";
@@ -57,6 +62,15 @@ function formatDate(timestamp) {
 
 // Function to check if user has already claimed a post
 async function hasUserClaimedPost(postId, userId) {
+  // Check if the post is marked as claimed by this user
+  const postSnapshot = await get(ref(db, `posts/${postId}`));
+  const post = postSnapshot.val();
+  
+  if (post && post.claimed && post.claimedBy && post.claimedBy.uid === userId) {
+    return true;
+  }
+
+  // Also check the claims collection for any pending claims
   const claimsRef = ref(db, 'claims');
   const claimsSnapshot = await get(claimsRef);
   const claims = claimsSnapshot.val();
@@ -350,6 +364,123 @@ function renderPostDetails(post, isOwner, postId, matchedWithPost = null) {
   }
 }
 
+// Chat functionality
+function generateChatId(user1Id, user2Id, postId) {
+  const sortedIds = [user1Id, user2Id].sort();
+  return `${sortedIds[0]}_${sortedIds[1]}_${postId}`;
+}
+
+async function openChat(postId, otherUserId, otherUserEmail) {
+  if (!currentUser) {
+    alert("Please log in to use the chat.");
+    return;
+  }
+
+  const post = await getPostById(postId);
+  if (!post) return;
+
+  currentChatId = generateChatId(currentUser.uid, otherUserId, postId);
+  currentChatPartner = { uid: otherUserId, email: otherUserEmail };
+  currentChatPost = { ...post, id: postId };
+
+  // Update chat modal info
+  document.getElementById('chatWithUser').textContent = otherUserEmail;
+  document.getElementById('chatItemTitle').textContent = post.title;
+  document.getElementById('chatMessageInput').value = '';
+  
+  // Show chat modal
+  document.getElementById('chatModal').style.display = 'flex';
+  
+  // Load and listen to messages
+  await loadMessages();
+  listenToNewMessages();
+}
+
+async function loadMessages() {
+  if (!currentChatId) return;
+
+  const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+  const snapshot = await get(messagesRef);
+  const messages = snapshot.val() || {};
+  
+  displayMessages(Object.entries(messages));
+}
+
+function listenToNewMessages() {
+  if (!currentChatId) return;
+
+  const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+  onValue(messagesRef, (snapshot) => {
+    const messages = snapshot.val() || {};
+    displayMessages(Object.entries(messages));
+  });
+}
+
+function displayMessages(messages) {
+  const chatMessages = document.getElementById('chatMessages');
+  
+  chatMessages.innerHTML = messages
+    .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+    .map(([, message]) => `
+      <div class="message ${message.senderId === currentUser.uid ? 'sent' : 'received'}">
+        <div class="message-content">${formatMessage(message.text)}</div>
+        <div class="timestamp">${formatDate(message.timestamp)}</div>
+      </div>
+    `).join('');
+  
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function formatMessage(message) {
+  if (!message) return '';
+  return escapeHtml(message).replace(/\n/g, '<br>');
+}
+
+async function sendMessage(text) {
+  if (!currentChatId || !text.trim()) return;
+
+  const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+  const newMessage = {
+    text: text.trim(),
+    senderId: currentUser.uid,
+    senderEmail: currentUser.email,
+    timestamp: Date.now()
+  };
+
+  await push(messagesRef, newMessage);
+
+  // Ensure notification is always sent
+  let chatPost = currentChatPost;
+  if (!chatPost || !chatPost.id) {
+    // Fallback: try to extract postId from chatId
+    const parts = currentChatId.split('_');
+    const postId = parts[2];
+    chatPost = await getPostById(postId);
+    chatPost = { ...chatPost, id: postId };
+  }
+
+  if (currentChatPartner && chatPost && chatPost.id) {
+    await createNotification(
+      currentChatPartner.uid,
+      'New Message',
+      `${currentUser.email} sent you a message about: ${chatPost.title}`,
+      'chat',
+      chatPost.id,
+      {
+        chatId: currentChatId,
+        message: text.trim()
+      }
+    );
+  }
+  
+  // Reload the page after sending message
+  window.location.reload();
+}
+
+// Make openChat function globally available
+window.openChat = openChat;
+
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   postId = getQueryParam('id');
@@ -388,6 +519,22 @@ document.getElementById('sendClaimBtn').onclick = async function() {
     return;
   }
 
+  // **FIX: Double-check if the post is still available before claiming**
+  const currentPostSnapshot = await get(ref(db, `posts/${currentClaimPostId}`));
+  const currentPostData = currentPostSnapshot.val();
+  
+  if (!currentPostData) {
+    alert('This post no longer exists.');
+    document.getElementById('claimModal').style.display = 'none';
+    return;
+  }
+  
+  if (currentPostData.claimed) {
+    alert('This item has already been claimed by someone else.');
+    document.getElementById('claimModal').style.display = 'none';
+    return;
+  }
+
   try {
     // Store the message in Firebase
     const claimsRef = ref(db, 'claims');
@@ -400,6 +547,17 @@ document.getElementById('sendClaimBtn').onclick = async function() {
       timestamp: Date.now()
     };
     await push(claimsRef, newClaim);
+
+    // **FIX: Automatically mark the post as claimed when claim request is sent**
+    const postRef = ref(db, `posts/${currentClaimPostId}`);
+    await update(postRef, {
+      claimed: true,
+      claimedBy: {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        timestamp: Date.now()
+      }
+    });
 
     // Create notification for the post creator with additional data
     await createNotification(
@@ -416,6 +574,7 @@ document.getElementById('sendClaimBtn').onclick = async function() {
 
     document.getElementById('claimModal').style.display = 'none';
     alert('Claim request sent successfully!');
+    window.location.reload();
   } catch (error) {
     console.error('Error sending message:', error);
     alert('Error sending message. Please try again.');
