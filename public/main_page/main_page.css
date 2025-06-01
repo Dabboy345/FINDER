@@ -1281,6 +1281,27 @@ body {
     font-size: 1rem;
 }
 
+/* Unclaim button styles */
+.unclaim-btn {
+    background: #fff;
+    color: #e67e22;
+    border: 2px solid #e67e22;
+    padding: 0.7rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.2s, color 0.2s;
+}
+
+.unclaim-btn:hover {
+    background: #e67e22;
+    color: #fff;
+}
+
 /* Scrollbar styles for chat messages */
 .chat-messages::-webkit-scrollbar {
     width: 6px;

@@ -530,8 +530,8 @@ window.unclaimPost = async function(postId) {
     }
     
     alert('Item unclaimed successfully!');
-    // The onValue listener should automatically update the UI
-    // No need to reload the page
+    // Reload the page to reflect the changes immediately
+    window.location.reload();
   } catch (error) {
     console.error('Error unclaiming post:', error);
     alert('Failed to unclaim the post.');

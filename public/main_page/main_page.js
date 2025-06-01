@@ -293,8 +293,8 @@ async function unclaimPost(postId) {
     }
 
     alert("You have unclaimed this item.");
-    // The onValue listener should automatically update the UI
-    // No need to reload the page
+    // Reload the page to reflect the changes immediately
+    window.location.reload();
   } catch (error) {
     console.error("Error unclaiming item:", error);
     alert("Error unclaiming item. Please try again.");
@@ -306,6 +306,9 @@ async function unclaimPost(postId) {
     }
   }
 }
+
+// Make unclaimPost function globally available
+window.unclaimPost = unclaimPost;
 
 // Modal logic
 let currentClaimPostId = null;
