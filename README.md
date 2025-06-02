@@ -28,7 +28,7 @@ The objective of our app is to help the users find their lost items in the unive
 
 ## Members
 This is our Project for the course Software engineering(course 2025). We are Group 12 formed by:
- - Alex Roig
+ - Alex Roig 
  - Claudia Hereter
  - Jana Baguer
  - Oscar Salueña

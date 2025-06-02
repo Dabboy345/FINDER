@@ -8,23 +8,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 <body>
-  <nav class="navbar">
-    <div class="logo-container" onclick="window.location.href='main_page.html'">
-      <img src="../FINDER_LOGO.jpeg" alt="Finder" class="logo-img">
-    </div>
-    <div class="nav-links">
-      <a href="main_page.html"><i class="fas fa-home"></i> Home</a>
-      <a href="../profile/profile.html"><i class="fas fa-user"></i> Profile</a>
-      <div class="notification-container">
-        <i class="fas fa-bell"></i>
-        <span id="notificationBadge">0</span>
-        <div class="notification-dropdown"></div>
-      </div>
-      <a href="post-creation.html" class="btn create-btn"><i class="fas fa-plus-circle"></i> Create Post</a>
-      <a href="#" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</a>
-    </div>
-  </nav>
-
   <div class="post-details-page">
     <div class="post-details-container">
       <div id="postDetailsContainer"></div>
@@ -33,24 +16,6 @@
           <i class="fas fa-arrow-left"></i> 
           <span>Back to Feed</span>
         </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Enhanced Notification Detail Modal -->
-  <div id="notificationDetailModal" class="modal">
-    <div class="modal-content notification-detail-modal">
-      <div class="modal-header">
-        <h2 id="notificationDetailTitle">Notification Details</h2>
-        <div class="modal-actions">
-          <button id="deleteNotificationBtn" class="delete-notification-btn">
-            <i class="fas fa-trash"></i> Delete
-          </button>
-          <span class="close" id="closeNotificationDetail">&times;</span>
-        </div>
-      </div>
-      <div id="notificationDetailBody" class="notification-detail-content">
-        <!-- Notification content will be loaded here -->
       </div>
     </div>
   </div>
