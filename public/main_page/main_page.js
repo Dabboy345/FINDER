@@ -166,6 +166,12 @@ function renderPosts(posts, userClaims) {
               <i class='fas fa-undo'></i> Unclaim
             </button>
           ` : ''}
+          ${(currentUser && post.user && currentUser.uid === post.user.uid) ? `
+            <button class="mark-returned-btn" onclick="event.stopPropagation();markAsReturned('${postId}')">
+              <i class="fas fa-check-circle"></i>
+              Mark as ${post.type?.toLowerCase() === 'lost' ? 'Retrieved' : 'Returned'}
+            </button>
+          ` : ''}
         </div>
       ` : currentUser && post.user && currentUser.uid === post.user.uid ? `
         <div class="owner-message">
@@ -307,8 +313,102 @@ async function unclaimPost(postId) {
   }
 }
 
+// Function to mark post as returned/retrieved for post owners
+async function markAsReturned(postId) {
+  if (!currentUser) {
+    alert("Please log in to mark items as returned.");
+    return;
+  }
+
+  const post = postsMap[postId];
+  if (!post) {
+    alert("Post not found.");
+    return;
+  }
+
+  // Only the post owner can mark their post as returned
+  if (!post.user || post.user.uid !== currentUser.uid) {
+    alert("You can only mark your own posts as returned.");
+    return;
+  }
+
+  // Only claimed posts can be marked as returned
+  if (!post.claimed) {
+    alert("This post hasn't been claimed yet.");
+    return;
+  }
+
+  const postType = post.type?.toLowerCase();
+  const actionText = postType === 'lost' ? 'retrieved' : 'returned';
+  const confirmMessage = `Are you sure you want to mark this item as ${actionText}? This will delete the post permanently.`;
+  
+  if (!confirm(confirmMessage)) {
+    return;
+  }
+
+  // Show loading state
+  const markBtn = document.querySelector(`button[onclick*="markAsReturned('${postId}')"]`);
+  if (markBtn) {
+    markBtn.disabled = true;
+    markBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+  }
+
+  try {
+    // Send notification to the claimer
+    if (post.claimedBy) {
+      const notificationsRef = ref(db, 'notifications');
+      const returnNotification = {
+        to: post.claimedBy.uid,
+        title: `Item ${actionText.charAt(0).toUpperCase() + actionText.slice(1)}!`,
+        message: `The item "${post.title}" has been marked as ${actionText} by the owner. Thank you for helping!`,
+        type: 'returned',
+        postId: postId,
+        timestamp: Date.now(),
+        read: false
+      };
+      await push(notificationsRef, returnNotification);
+    }
+
+    // Delete the post from the database
+    const postRef = ref(db, `posts/${postId}`);
+    await set(postRef, null);
+
+    // Also remove any related claim entries
+    const claimsRef = ref(db, 'claims');
+    const claimsSnapshot = await get(claimsRef);
+    const claims = claimsSnapshot.val();
+    
+    if (claims) {
+      const claimEntriesToRemove = Object.entries(claims).filter(([, claim]) => 
+        claim.postId === postId
+      );
+      
+      for (const [claimId] of claimEntriesToRemove) {
+        await set(ref(db, `claims/${claimId}`), null);
+      }
+    }
+
+    alert(`🎉 Great! Your item has been marked as ${actionText}. The post has been removed.`);
+    // Reload the page to reflect the changes immediately
+    window.location.reload();
+  } catch (error) {
+    console.error(`Error marking item as ${actionText}:`, error);
+    alert(`Error marking item as ${actionText}. Please try again.`);
+    
+    // Restore button state on error
+    if (markBtn) {
+      markBtn.disabled = false;
+      const btnText = postType === 'lost' ? 'Mark as Retrieved' : 'Mark as Returned';
+      markBtn.innerHTML = `<i class="fas fa-check-circle"></i> ${btnText}`;
+    }
+  }
+}
+
 // Make unclaimPost function globally available
 window.unclaimPost = unclaimPost;
+
+// Make markAsReturned function globally available
+window.markAsReturned = markAsReturned;
 
 // Modal logic
 let currentClaimPostId = null;
@@ -1108,6 +1208,160 @@ document.getElementById('findMatchesBtn').addEventListener('click', async () => 
     showMatchesModal(allMatches);
   }
 });
+
+// Multilingual dictionary for enhanced matching
+const multilingualDictionary = {
+  'book': ['libro', 'llibre', 'livre'],
+  'phone': ['telefono', 'telefon', 'telephone'],
+  'wallet': ['cartera', 'cartera', 'portefeuille'],
+  'keys': ['llaves', 'claus', 'clés'],
+  'bag': ['bolsa', 'bossa', 'sac'],
+  'glasses': ['gafas', 'ulleres', 'lunettes'],
+  'watch': ['reloj', 'rellotge', 'montre'],
+  'laptop': ['portatil', 'portatil', 'ordinateur'],
+  'earphones': ['auriculares', 'auriculars', 'écouteurs'],
+  'umbrella': ['paraguas', 'paraigua', 'parapluie'],
+  'jacket': ['chaqueta', 'jaqueta', 'veste'],
+  'shoes': ['zapatos', 'sabates', 'chaussures'],
+  'red': ['rojo', 'vermell', 'rouge'],
+  'blue': ['azul', 'blau', 'bleu'],
+  'black': ['negro', 'negre', 'noir'],
+  'white': ['blanco', 'blanc', 'blanc'],
+  'green': ['verde', 'verd', 'vert'],
+  'yellow': ['amarillo', 'groc', 'jaune'],
+  'small': ['pequeño', 'petit', 'petit'],
+  'big': ['grande', 'gran', 'grand'],
+  'new': ['nuevo', 'nou', 'nouveau'],
+  'old': ['viejo', 'vell', 'vieux']
+};
+
+// Calculate enhanced similarity between two posts
+function calculateEnhancedSimilarity(post1, post2) {
+  const scores = {
+    labelMatch: 0,
+    semanticMatch: 0,
+    textSimilarity: 0,
+    locationMatch: 0,
+    timeProximity: 0,
+    total: 0
+  };
+  
+  // Get text content for both posts
+  const text1 = `${post1.title || ''} ${post1.description || ''}`.toLowerCase();
+  const text2 = `${post2.title || ''} ${post2.description || ''}`.toLowerCase();
+  const labels1 = (post1.labels || []).map(l => l.toLowerCase());
+  const labels2 = (post2.labels || []).map(l => l.toLowerCase());
+  
+  // 1. Direct label matching (25% weight)
+  const directMatches = labels1.filter(l => 
+    l !== 'lost' && l !== 'found' && labels2.includes(l)
+  );
+  scores.labelMatch = directMatches.length > 0 ? Math.min(directMatches.length * 0.1, 0.25) : 0;
+  
+  // 2. Semantic/multilingual matching (30% weight)
+  let semanticMatches = 0;
+  for (const label1 of labels1) {
+    if (label1 === 'lost' || label1 === 'found') continue;
+    
+    // Check direct translations
+    const translations = multilingualDictionary[label1] || [];
+    const hasTranslation = labels2.some(l2 => translations.includes(l2));
+    if (hasTranslation) semanticMatches++;
+    
+    // Check if any label2 translates to label1
+    for (const label2 of labels2) {
+      if (label2 === 'lost' || label2 === 'found') continue;
+      const reverseTranslations = multilingualDictionary[label2] || [];
+      if (reverseTranslations.includes(label1)) {
+        semanticMatches++;
+        break;
+      }
+    }
+  }
+  
+  // Also check text content for semantic matches
+  for (const [word, translations] of Object.entries(multilingualDictionary)) {
+    if (text1.includes(word)) {
+      for (const translation of translations) {
+        if (text2.includes(translation)) {
+          semanticMatches++;
+          break;
+        }
+      }
+    }
+  }
+  
+  scores.semanticMatch = semanticMatches > 0 ? Math.min(semanticMatches * 0.08, 0.3) : 0;
+  
+  // 3. Text similarity (20% weight)
+  const words1 = text1.split(/\s+/).filter(w => w.length > 2);
+  const words2 = text2.split(/\s+/).filter(w => w.length > 2);
+  const commonWords = words1.filter(w => words2.includes(w));
+  
+  if (words1.length > 0 && words2.length > 0) {
+    const similarity = commonWords.length / Math.max(words1.length, words2.length);
+    scores.textSimilarity = similarity * 0.2;
+  }
+  
+  // 4. Location proximity (15% weight)
+  if (post1.location && post2.location) {
+    const loc1 = post1.location.toLowerCase();
+    const loc2 = post2.location.toLowerCase();
+    
+    // Exact location match
+    if (loc1 === loc2) {
+      scores.locationMatch = 0.15;
+    }
+    // Partial location match
+    else if (loc1.includes(loc2) || loc2.includes(loc1)) {
+      scores.locationMatch = 0.08;
+    }
+    // Common location keywords
+    else {
+      const locationKeywords = ['campus', 'biblioteca', 'library', 'cafeteria', 'aula', 'classroom', 'building', 'hall', 'park'];
+      const hasCommonLocation = locationKeywords.some(keyword => 
+        loc1.includes(keyword) && loc2.includes(keyword)
+      );
+      if (hasCommonLocation) scores.locationMatch = 0.05;
+    }
+  }
+  
+  // 5. Time proximity (10% weight)
+  if (post1.timestamp && post2.timestamp) {
+    const timeDiff = Math.abs(post1.timestamp - post2.timestamp);
+    const hoursDiff = timeDiff / (1000 * 60 * 60);
+    
+    // Items lost/found within 24 hours get highest score
+    if (hoursDiff <= 24) {
+      scores.timeProximity = 0.1;
+    }
+    // Within a week gets medium score
+    else if (hoursDiff <= 168) {
+      scores.timeProximity = 0.05;
+    }
+    // Within a month gets small score
+    else if (hoursDiff <= 720) {
+      scores.timeProximity = 0.02;
+    }
+  }
+  
+  // Calculate total score
+  scores.total = scores.labelMatch + scores.semanticMatch + scores.textSimilarity + scores.locationMatch + scores.timeProximity;
+  
+  return {
+    score: scores.total,
+    confidence: Math.round(scores.total * 100),
+    breakdown: scores,
+    directMatches,
+    semanticMatches,
+    factors: {
+      labels: directMatches,
+      commonWords: commonWords || [],
+      locationMatch: scores.locationMatch > 0,
+      timeProximity: scores.timeProximity > 0
+    }
+  };
+}
 
 // Find all matches for user's posts
 function findAllMatches(userPosts, allPosts) {
@@ -2227,29 +2481,30 @@ function addMatchPreviewStyles() {
     }
     
     @media (max-width: 768px) {
-      .detailed-comparison {
-        flex-direction: column;
-        gap: 16px;
+      .matches-modal .modal-content {
+        width: 98%;
+        margin: 1%;
       }
       
-      .match-divider {
-        flex-direction: row;
-        min-width: auto;
-        height: 60px;
-        width: 100%;
-      }
-      
-      .match-connection-line {
-        width: 100%;
-        height: 2px;
-        min-height: auto;
-      }
-      
-      .factors-grid {
+      .matches-grid {
         grid-template-columns: 1fr;
       }
       
-      .preview-actions {
+      .match-comparison {
+        flex-direction: column;
+        gap: 8px;
+      }
+      
+      .match-arrow {
+        transform: rotate(90deg);
+      }
+      
+      .summary-stats {
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .modal-actions {
         flex-direction: column;
       }
     }
@@ -2257,650 +2512,6 @@ function addMatchPreviewStyles() {
   
   document.head.appendChild(style);
 }
-
-// Enhanced Match Suggestion Modal Functions
-function showMatchSuggestionModal(myPost, matchedPost, sharedLabels) {
-  const modal = document.getElementById('matchSuggestionModal');
-  const yourPostDetails = document.getElementById('yourPostDetails');
-  const matchedPostDetails = document.getElementById('matchedPostDetails');
-  const sharedLabelsSpan = document.getElementById('sharedLabels');
-
-  // Populate your post details
-  yourPostDetails.innerHTML = `
-    <div class="post-title">${escapeHtml(myPost.title)}</div>
-    ${myPost.imageData ? 
-      `<img src="${myPost.imageData}" alt="${escapeHtml(myPost.title)}" class="post-image" 
-            onerror="this.onerror=null;this.src='default-image.png';" />` : 
-      ''
-    }
-    ${myPost.description ? 
-      `<div class="post-description">${escapeHtml(myPost.description)}</div>` : 
-      ''
-    }
-    <div class="post-labels">
-      ${(myPost.labels || []).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
-    </div>
-  `;
-
-  // Populate matched post details
-  matchedPostDetails.innerHTML = `
-    <div class="post-title">${escapeHtml(matchedPost.title)}</div>
-    ${matchedPost.imageData ? 
-      `<img src="${matchedPost.imageData}" alt="${escapeHtml(matchedPost.title)}" class="post-image" 
-            onerror="this.onerror=null;this.src='default-image.png';" />` : 
-      ''
-    }
-    ${matchedPost.description ? 
-      `<div class="post-description">${escapeHtml(matchedPost.description)}</div>` : 
-      ''
-    }
-    <div class="post-labels">
-      ${(matchedPost.labels || []).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
-    </div>
-  `;
-
-  // Show shared labels
-  sharedLabelsSpan.textContent = sharedLabels.join(', ');
-
-  // Set up button handlers
-  document.getElementById('viewMatchDetailsBtn').onclick = () => {
-    modal.style.display = 'none';
-    window.location.href = `post-details.html?id=${encodeURIComponent(matchedPost.id)}&matchedWith=${encodeURIComponent(myPost.id)}`;
-  };
-
-  document.getElementById('dismissMatchBtn').onclick = () => {
-    modal.style.display = 'none';
-  };
-
-  document.getElementById('closeMatchModal').onclick = () => {
-    modal.style.display = 'none';
-  };
-
-  modal.style.display = 'flex';
-}
-
-// Auto-suggestion system for browsing users
-let suggestionTimeouts = new Set();
-
-// Multilingual dictionary for common lost items
-const multilingualDictionary = {
-  // Writing instruments
-  'pen': ['boli', 'bolígrafo', 'stylo', 'pluma', 'escribir'],
-  'boli': ['pen', 'stylo', 'bolígrafo', 'pluma', 'writing'],
-  'stylo': ['pen', 'boli', 'bolígrafo', 'pluma', 'writing'],
-  'pencil': ['lápiz', 'crayon', 'llapis'],
-  'lápiz': ['pencil', 'crayon', 'llapis'],
-  
-  // Colors
-  'red': ['rojo', 'rouge', 'vermell', 'roig'],
-  'rojo': ['red', 'rouge', 'vermell', 'roig'],
-  'rouge': ['red', 'rojo', 'vermell', 'roig'],
-  'vermell': ['red', 'rojo', 'rouge', 'roig'],
-  'blue': ['azul', 'bleu', 'blau'],
-  'azul': ['blue', 'bleu', 'blau'],
-  'bleu': ['blue', 'azul', 'blau'],
-  'blau': ['blue', 'azul', 'bleu'],
-  'black': ['negro', 'noir', 'negre'],
-  'negro': ['black', 'noir', 'negre'],
-  'noir': ['black', 'negro', 'negre'],
-  'negre': ['black', 'negro', 'noir'],
-  'white': ['blanco', 'blanc'],
-  'blanco': ['white', 'blanc'],
-  'blanc': ['white', 'blanco'],
-  'green': ['verde', 'vert', 'verd'],
-  'verde': ['green', 'vert', 'verd'],
-  'vert': ['green', 'verde', 'verd'],
-  'verd': ['green', 'verde', 'vert'],
-  
-  // Electronics
-  'phone': ['teléfono', 'móvil', 'mòbil', 'portable', 'celular'],
-  'teléfono': ['phone', 'móvil', 'mòbil', 'portable', 'celular'],
-  'móvil': ['phone', 'teléfono', 'mòbil', 'portable', 'celular'],
-  'mòbil': ['phone', 'teléfono', 'móvil', 'portable', 'celular'],
-  'portable': ['phone', 'teléfono', 'móvil', 'mòbil', 'celular'],
-  'laptop': ['portátil', 'ordenador', 'ordinador', 'computer'],
-  'portátil': ['laptop', 'ordenador', 'ordinador', 'computer'],
-  'ordenador': ['laptop', 'portátil', 'ordinador', 'computer'],
-  'ordinador': ['laptop', 'portátil', 'ordenador', 'computer'],
-  'headphones': ['auriculares', 'cascos', 'headset'],
-  'auriculares': ['headphones', 'cascos', 'headset'],
-  'cascos': ['headphones', 'auriculares', 'headset'],
-  
-  // Clothing
-  'jacket': ['chaqueta', 'cazadora', 'americana', 'jaqueta'],
-  'chaqueta': ['jacket', 'cazadora', 'americana', 'jaqueta'],
-  'jaqueta': ['jacket', 'chaqueta', 'cazadora', 'americana'],
-  'shirt': ['camisa', 'camiseta'],
-  'camisa': ['shirt', 'camiseta'],
-  'camiseta': ['shirt', 'camisa'],
-  'shoes': ['zapatos', 'zapatillas', 'sabates'],
-  'zapatos': ['shoes', 'zapatillas', 'sabates'],
-  'zapatillas': ['shoes', 'zapatos', 'sabates'],
-  'sabates': ['shoes', 'zapatos', 'zapatillas'],
-  
-  // Accessories
-  'bag': ['bolso', 'mochila', 'bolsa', 'motxilla'],
-  'bolso': ['bag', 'mochila', 'bolsa', 'motxilla'],
-  'mochila': ['bag', 'bolso', 'bolsa', 'motxilla'],
-  'motxilla': ['bag', 'bolso', 'mochila', 'bolsa'],
-  'wallet': ['cartera', 'billetera', 'monedero'],
-  'cartera': ['wallet', 'billetera', 'monedero'],
-  'billetera': ['wallet', 'cartera', 'monedero'],
-  'keys': ['llaves', 'claves', 'claus'],
-  'llaves': ['keys', 'claves', 'claus'],
-  'claus': ['keys', 'llaves', 'claves'],
-  'watch': ['reloj', 'montre'],
-  'reloj': ['watch', 'montre'],
-  'montre': ['watch', 'reloj'],
-  'glasses': ['gafas', 'anteojos', 'ulleres'],
-  'gafas': ['glasses', 'anteojos', 'ulleres'],
-  'ulleres': ['glasses', 'gafas', 'anteojos'],
-  
-  // Books and study materials
-  'book': ['libro', 'llibre', 'livre'],
-  'libro': ['book', 'llibre', 'livre'],
-  'llibre': ['book', 'libro', 'livre'],
-  'notebook': ['cuaderno', 'libreta', 'quadern'],
-  'cuaderno': ['notebook', 'libreta', 'quadern'],
-  'quadern': ['notebook', 'cuaderno', 'libreta'],
-  
-  // Common descriptive words
-  'lost': ['perdido', 'perdut', 'perdu'],
-  'found': ['encontrado', 'trobat', 'trouvé'],
-  'small': ['pequeño', 'petit', 'petite'],
-  'big': ['grande', 'gran', 'grand'],
-  'new': ['nuevo', 'nou', 'nouveau'],
-  'old': ['viejo', 'vell', 'vieux']
-};
-
-// Calculate enhanced similarity between two posts
-function calculateEnhancedSimilarity(post1, post2) {
-  const scores = {
-    labelMatch: 0,
-    semanticMatch: 0,
-    textSimilarity: 0,
-    locationMatch: 0,
-    total: 0
-  };
-  
-  // Get text content for both posts
-  const text1 = `${post1.title || ''} ${post1.description || ''}`.toLowerCase();
-  const text2 = `${post2.title || ''} ${post2.description || ''}`.toLowerCase();
-  const labels1 = (post1.labels || []).map(l => l.toLowerCase());
-  const labels2 = (post2.labels || []).map(l => l.toLowerCase());
-  
-  // 1. Direct label matching (30% weight)
-  const directMatches = labels1.filter(l => 
-    l !== 'lost' && l !== 'found' && labels2.includes(l)
-  );
-  scores.labelMatch = directMatches.length > 0 ? 0.3 : 0;
-  
-  // 2. Semantic/multilingual matching (40% weight)
-  let semanticMatches = 0;
-  for (const label1 of labels1) {
-    if (label1 === 'lost' || label1 === 'found') continue;
-    
-    // Check direct translations
-    const translations = multilingualDictionary[label1] || [];
-    const hasTranslation = labels2.some(l2 => translations.includes(l2));
-    if (hasTranslation) semanticMatches++;
-    
-    // Check if any label2 translates to label1
-    for (const label2 of labels2) {
-      if (label2 === 'lost' || label2 === 'found') continue;
-      const reverseTranslations = multilingualDictionary[label2] || [];
-      if (reverseTranslations.includes(label1)) {
-        semanticMatches++;
-        break;
-      }
-    }
-  }
-  
-  // Also check text content for semantic matches
-  for (const [word, translations] of Object.entries(multilingualDictionary)) {
-    if (text1.includes(word)) {
-      for (const translation of translations) {
-        if (text2.includes(translation)) {
-          semanticMatches++;
-          break;
-        }
-      }
-    }
-  }
-  
-  scores.semanticMatch = semanticMatches > 0 ? Math.min(semanticMatches * 0.1, 0.4) : 0;
-  
-  // 3. Text similarity (20% weight)
-  const words1 = text1.split(/\s+/).filter(w => w.length > 2);
-  const words2 = text2.split(/\s+/).filter(w => w.length > 2);
-  const commonWords = words1.filter(w => words2.includes(w));
-  
-  if (words1.length > 0 && words2.length > 0) {
-    const similarity = commonWords.length / Math.max(words1.length, words2.length);
-    scores.textSimilarity = similarity * 0.2;
-  }
-  
-  // 4. Location proximity (10% weight)
-  if (post1.location && post2.location) {
-    const loc1 = post1.location.toLowerCase();
-    const loc2 = post2.location.toLowerCase();
-    
-    // Exact location match
-    if (loc1 === loc2) {
-      scores.locationMatch = 0.1;
-    }
-    // Partial location match
-    else if (loc1.includes(loc2) || loc2.includes(loc1)) {
-      scores.locationMatch = 0.05;
-    }
-    // Common location keywords
-    else {
-      const locationKeywords = ['campus', 'biblioteca', 'library', 'cafeteria', 'aula', 'classroom'];
-      const hasCommonLocation = locationKeywords.some(keyword => 
-        loc1.includes(keyword) && loc2.includes(keyword)
-      );
-      if (hasCommonLocation) scores.locationMatch = 0.03;
-    }
-  }
-  
-  // Calculate total score
-  scores.total = scores.labelMatch + scores.semanticMatch + scores.textSimilarity + scores.locationMatch;
-  
-  return {
-    score: scores.total,
-    confidence: Math.round(scores.total * 100),
-    breakdown: scores,
-    matchingFactors: getMatchingFactors(scores, directMatches, semanticMatches, commonWords),
-    directMatches,
-    semanticMatches
-  };
-}
-
-// Get human-readable matching factors
-function getMatchingFactors(scores, directMatches, semanticMatches, commonWords) {
-  const factors = [];
-  
-  if (scores.labelMatch > 0) {
-    factors.push(`Direct label match (${directMatches.join(', ')})`);
-  }
-  
-  if (scores.semanticMatch > 0) {
-    factors.push(`Multilingual similarity (${semanticMatches} translations)`);
-  }
-  
-  if (scores.textSimilarity > 0) {
-    factors.push(`Text similarity (${commonWords.length} common words)`);
-  }
-  
-  if (scores.locationMatch > 0) {
-    factors.push('Location proximity');
-  }
-  
-  return factors;
-}
-
-function checkForMatchSuggestions(userPosts, allPosts) {
-  if (!currentUser || !userPosts.length) return;
-
-  const otherPosts = Object.entries(allPosts)
-    .filter(([, post]) => post.user?.uid !== currentUser.uid)
-    .map(([id, post]) => ({ id, ...post }));
-
-  let bestMatches = [];
-
-  for (const myPost of userPosts) {
-    const myType = myPost.type?.toLowerCase();
-    if (myType !== "lost" && myType !== "found") continue;
-
-    for (const otherPost of otherPosts) {
-      const otherType = otherPost.type?.toLowerCase();
-      if (!otherType || myType === otherType) continue;
-
-      // Calculate comprehensive similarity
-      const similarity = calculateEnhancedSimilarity(myPost, otherPost);
-      
-      // Consider it a match if confidence is above 15% (more lenient threshold)
-      if (similarity.confidence >= 15) {
-        bestMatches.push({
-          myPost,
-          otherPost,
-          similarity,
-          timestamp: Date.now()
-        });
-      }
-    }
-  }
-
-  // Sort by confidence and show the best match
-  if (bestMatches.length > 0) {
-    bestMatches.sort((a, b) => b.similarity.confidence - a.similarity.confidence);
-    const bestMatch = bestMatches[0];
-    
-    // Show suggestion popup after a delay
-    const timeoutId = setTimeout(() => {
-      showEnhancedMatchSuggestionPopup(bestMatch);
-      suggestionTimeouts.delete(timeoutId);
-    }, 3000);
-    
-    suggestionTimeouts.add(timeoutId);
-  }
-}
-
-function showEnhancedMatchSuggestionPopup(matchData) {
-  // Remove any existing popup
-  const existingPopup = document.querySelector('.match-suggestion-popup');
-  if (existingPopup) {
-    existingPopup.remove();
-  }
-
-  const { myPost, otherPost, similarity } = matchData;
-  const isMyPostLost = myPost.type?.toLowerCase() === 'lost';
-  
-  // Determine confidence level and styling
-  let confidenceClass = 'low';
-  let confidenceText = 'Potential Match';
-  
-  if (similarity.confidence >= 70) {
-    confidenceClass = 'high';
-    confidenceText = 'High Confidence';
-  } else if (similarity.confidence >= 40) {
-    confidenceClass = 'medium';
-    confidenceText = 'Good Match';
-  }
-
-  const popup = document.createElement('div');
-  popup.className = 'match-suggestion-popup';
-  popup.innerHTML = `
-    <div class="popup-content">
-      <div class="popup-header">
-        <h3>🎯 ${confidenceText} Found!</h3>
-        <button class="close-btn" onclick="dismissSuggestion()">×</button>
-      </div>
-      
-      <div class="match-info">
-        <div class="confidence-score ${confidenceClass}">
-          ${similarity.confidence}% Match
-        </div>
-        
-        <div class="posts-comparison">
-          <div class="post-summary my-post">
-            <span class="post-type ${myPost.type}">${myPost.type.toUpperCase()}</span>
-            <h4>${myPost.title}</h4>
-            <p>${myPost.description || 'No description'}</p>
-          </div>
-          
-          <div class="match-arrow">↔</div>
-          
-          <div class="post-summary other-post">
-            <span class="post-type ${otherPost.type}">${otherPost.type.toUpperCase()}</span>
-            <h4>${otherPost.title}</h4>
-            <p>${otherPost.description || 'No description'}</p>
-          </div>
-        </div>
-        
-        <div class="matching-factors">
-          <h5>Why this matches:</h5>
-          <ul>
-            ${similarity.matchingFactors.map(factor => `<li>${factor}</li>`).join('')}
-          </ul>
-        </div>
-      </div>
-      
-      <div class="popup-actions">
-        <button class="view-btn" onclick="viewSuggestionMatch('${otherPost.id}', '${myPost.id}')">
-          View Details
-        </button>
-        <button class="dismiss-btn" onclick="dismissSuggestion()">
-          Maybe Later
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(popup);
-
-  // Add enhanced styling for the popup
-  const style = document.createElement('style');
-  style.textContent = `
-    .match-suggestion-popup {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 10000;
-      animation: fadeIn 0.3s ease-out;
-    }
-    
-    .popup-content {
-      background: white;
-      border-radius: 12px;
-      padding: 24px;
-      max-width: 600px;
-      width: 90%;
-      max-height: 80vh;
-      overflow-y: auto;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-      animation: slideUp 0.3s ease-out;
-    }
-    
-    .popup-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-      padding-bottom: 15px;
-      border-bottom: 2px solid #f0f0f0;
-    }
-    
-    .popup-header h3 {
-      margin: 0;
-      color: #2c3e50;
-      font-size: 1.3em;
-    }
-    
-    .close-btn {
-      background: none;
-      border: none;
-      font-size: 24px;
-      cursor: pointer;
-      color: #7f8c8d;
-      padding: 0;
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .close-btn:hover {
-      background: #ecf0f1;
-      color: #e74c3c;
-    }
-    
-    .confidence-score {
-      text-align: center;
-      font-size: 1.5em;
-      font-weight: bold;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-    }
-    
-    .confidence-score.high {
-      background: linear-gradient(135deg, #27ae60, #2ecc71);
-      color: white;
-    }
-    
-    .confidence-score.medium {
-      background: linear-gradient(135deg, #f39c12, #e67e22);
-      color: white;
-    }
-    
-    .confidence-score.low {
-      background: linear-gradient(135deg, #3498db, #2980b9);
-      color: white;
-    }
-    
-    .posts-comparison {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    
-    .post-summary {
-      flex: 1;
-      min-width: 200px;
-      padding: 15px;
-      border-radius: 8px;
-      border: 2px solid #ecf0f1;
-    }
-    
-    .post-summary h4 {
-      margin: 8px 0 5px 0;
-      color: #2c3e50;
-      font-size: 1.1em;
-    }
-    
-    .post-summary p {
-      margin: 0;
-      color: #7f8c8d;
-      font-size: 0.9em;
-      line-height: 1.4;
-    }
-    
-    .post-type {
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 0.8em;
-      font-weight: bold;
-      text-transform: uppercase;
-    }
-    
-    .post-type.lost {
-      background: #e74c3c;
-      color: white;
-    }
-    
-    .post-type.found {
-      background: #27ae60;
-      color: white;
-    }
-    
-    .match-arrow {
-      font-size: 1.5em;
-      color: #3498db;
-      font-weight: bold;
-      flex-shrink: 0;
-    }
-    
-    .matching-factors {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-    }
-    
-    .matching-factors h5 {
-      margin: 0 0 10px 0;
-      color: #2c3e50;
-    }
-    
-    .matching-factors ul {
-      margin: 0;
-      padding-left: 20px;
-    }
-    
-    .matching-factors li {
-      color: #5a6c7d;
-      margin-bottom: 5px;
-    }
-    
-    .popup-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-    }
-    
-    .view-btn, .dismiss-btn {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: all 0.2s;
-    }
-    
-    .view-btn {
-      background: #3498db;
-      color: white;
-    }
-    
-    .view-btn:hover {
-      background: #2980b9;
-      transform: translateY(-1px);
-    }
-    
-    .dismiss-btn {
-      background: #ecf0f1;
-      color: #7f8c8d;
-    }
-    
-    .dismiss-btn:hover {
-      background: #d5dbdb;
-    }
-    
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    
-    @keyframes slideUp {
-      from { transform: translateY(30px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    
-    @media (max-width: 768px) {
-      .posts-comparison {
-        flex-direction: column;
-      }
-      
-      .match-arrow {
-        transform: rotate(90deg);
-      }
-      
-      .popup-actions {
-        flex-direction: column;
-      }
-    }
-  `;
-  
-  // Only add style if it doesn't exist
-  if (!document.querySelector('#match-popup-styles')) {
-    style.id = 'match-popup-styles';
-    document.head.appendChild(style);
-  }
-}
-
-// Global functions for match suggestion popup
-window.viewSuggestionMatch = function(otherPostId, myPostId) {
-  dismissSuggestion();
-  window.location.href = `post-details.html?id=${encodeURIComponent(otherPostId)}&matchedWith=${encodeURIComponent(myPostId)}`;
-};
-
-window.dismissSuggestion = function() {
-  const popup = document.querySelector('.match-suggestion-popup');
-  if (popup) {
-    popup.remove();
-  }
-};
 
 // Enhanced notification click handler
 function setupNotificationClickHandler() {

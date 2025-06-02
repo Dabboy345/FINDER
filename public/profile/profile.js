@@ -293,6 +293,12 @@ function updatePostsDisplay(posts) {
                 <i class='fas fa-undo'></i> Unclaim
               </button>
             ` : ''}
+            ${(currentUser && post.user && currentUser.uid === post.user.uid) ? `
+              <button class="mark-returned-btn" onclick="markAsReturned('${post.id}')">
+                <i class="fas fa-check-circle"></i>
+                Mark as ${post.type?.toLowerCase() === 'lost' ? 'Retrieved' : 'Returned'}
+              </button>
+            ` : ''}
           </div>
         ` : `
           <div class="claim-status unclaimed">
@@ -365,15 +371,17 @@ function escapeHtml(text) {
 async function createNotification(toUserId, title, message, type, postId, additionalData = {}) {
   if (!toUserId) return;
 
-  const notificationsRef = ref(db, `notifications/${toUserId}`);
+  const notificationsRef = ref(db, 'notifications');
   const newNotificationRef = push(notificationsRef);
   
   await set(newNotificationRef, {
+    to: toUserId,
     title,
     message,
     type,
     postId,
     timestamp: Date.now(),
+    lastUpdated: Date.now(),
     read: false,
     from: {
       uid: currentUser.uid,
@@ -543,3 +551,97 @@ window.unclaimPost = async function(postId) {
     }
   }
 };
+
+// Function to mark post as returned/retrieved for post owners
+async function markAsReturned(postId) {
+  if (!currentUser) {
+    alert("Please log in to mark items as returned.");
+    return;
+  }
+
+  const post = userPosts.find(p => p.id === postId);
+  if (!post) {
+    alert("Post not found.");
+    return;
+  }
+
+  // Only the post owner can mark their post as returned
+  if (!post.user || post.user.uid !== currentUser.uid) {
+    alert("You can only mark your own posts as returned.");
+    return;
+  }
+
+  // Only claimed posts can be marked as returned
+  if (!post.claimed) {
+    alert("This post hasn't been claimed yet.");
+    return;
+  }
+
+  const postType = post.type?.toLowerCase();
+  const actionText = postType === 'lost' ? 'retrieved' : 'returned';
+  const confirmMessage = `Are you sure you want to mark this item as ${actionText}? This will delete the post permanently.`;
+  
+  if (!confirm(confirmMessage)) {
+    return;
+  }
+
+  // Show loading state
+  const markBtn = document.querySelector(`button[onclick*="markAsReturned('${postId}')"]`);
+  if (markBtn) {
+    markBtn.disabled = true;
+    markBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+  }
+
+  try {
+    // Send notification to the claimer
+    if (post.claimedBy) {
+      const notificationsRef = ref(db, 'notifications');
+      const returnNotification = {
+        to: post.claimedBy.uid,
+        title: `Item ${actionText.charAt(0).toUpperCase() + actionText.slice(1)}!`,
+        message: `The item "${post.title}" has been marked as ${actionText} by the owner. Thank you for helping!`,
+        type: 'returned',
+        postId: postId,
+        timestamp: Date.now(),
+        read: false
+      };
+      await push(notificationsRef, returnNotification);
+    }
+
+    // Delete the post from the database
+    const postRef = ref(db, `posts/${postId}`);
+    await set(postRef, null);
+
+    // Also remove any related claim entries
+    const claimsRef = ref(db, 'claims');
+    const claimsSnapshot = await get(claimsRef);
+    const claims = claimsSnapshot.val();
+    
+    if (claims) {
+      const claimEntriesToRemove = Object.entries(claims).filter(([, claim]) => 
+        claim.postId === postId
+      );
+      
+      for (const [claimId] of claimEntriesToRemove) {
+        await set(ref(db, `claims/${claimId}`), null);
+      }
+    }
+
+    alert(`🎉 Great! Your item has been marked as ${actionText}. The post has been removed.`);
+    // Reload the page to reflect the changes immediately
+    window.location.reload();
+  } catch (error) {
+    console.error(`Error marking item as ${actionText}:`, error);
+    alert(`Error marking item as ${actionText}. Please try again.`);
+    
+    // Restore button state on error
+    if (markBtn) {
+      markBtn.disabled = false;
+      const btnText = postType === 'lost' ? 'Mark as Retrieved' : 'Mark as Returned';
+      markBtn.innerHTML = `<i class="fas fa-check-circle"></i> ${btnText}`;
+    }
+  }
+}
+
+// Make markAsReturned function globally available
+window.markAsReturned = markAsReturned;
