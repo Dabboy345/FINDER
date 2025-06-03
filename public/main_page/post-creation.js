@@ -20,6 +20,68 @@ const db = getDatabase(app);
 let currentUser = null;
 let postType = 'lost'; // Default post type
 
+// Toast notification system
+function createToastContainer() {
+  let container = document.querySelector('.toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  return container;
+}
+
+function showToast(title, message, type = 'info', duration = 4000) {
+  const container = createToastContainer();
+  
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  
+  const icons = {
+    success: 'fas fa-check-circle',
+    error: 'fas fa-exclamation-circle',
+    warning: 'fas fa-exclamation-triangle',
+    info: 'fas fa-info-circle'
+  };
+  
+  toast.innerHTML = `
+    <div class="toast-header">
+      <div class="toast-icon">
+        <i class="${icons[type] || icons.info}"></i>
+      </div>
+      <h4 class="toast-title">${title}</h4>
+      <button class="toast-close" onclick="removeToast(this.parentElement.parentElement)">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <p class="toast-message">${message}</p>
+    <div class="toast-progress"></div>
+  `;
+  
+  container.appendChild(toast);
+  
+  // Auto remove after duration
+  setTimeout(() => {
+    removeToast(toast);
+  }, duration);
+  
+  return toast;
+}
+
+function removeToast(toast) {
+  if (toast && toast.parentElement) {
+    toast.style.animation = 'slideOutToast 0.3s ease forwards';
+    setTimeout(() => {
+      if (toast.parentElement) {
+        toast.parentElement.removeChild(toast);
+      }
+    }, 300);
+  }
+}
+
+// Make removeToast globally available
+window.removeToast = removeToast;
+
 // Multilingual dictionary for semantic matching
 const multilingualDictionary = {
   // Electronics
@@ -245,7 +307,7 @@ postForm.addEventListener('submit', async (e) => {
   // Get the file from the input
   const file = imageInput.files[0];
   if (!file) {
-    alert('Please select an image.');
+    showToast('Error', 'Please select an image.', 'error');
     return;
   }
 
@@ -309,7 +371,7 @@ postForm.addEventListener('submit', async (e) => {
     window.location.href = 'main_page.html';
   } catch (error) {
     console.error('Error creating post:', error);
-    alert('Error creating post. Please try again.');
+    showToast('Error', 'Error creating post. Please try again.', 'error');
   }
 });
 
@@ -321,7 +383,7 @@ document.getElementById('logoutBtn').addEventListener('click', async (e) => {
     window.location.href = '../index.html';
   } catch (error) {
     console.error('Error signing out:', error);
-    alert('Error signing out. Please try again.');
+    showToast('Error', 'Error signing out. Please try again.', 'error');
   }
 });
 
