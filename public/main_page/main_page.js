@@ -1172,6 +1172,14 @@ document.getElementById('chatMessageInput').addEventListener('keydown', async (e
   }
 });
 
+// Function to close the matches modal
+function closeMatchesModal() {
+  const modal = document.querySelector('.matches-modal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
 // Make chat function available globally
 window.openChat = openChat;
 
@@ -1252,21 +1260,32 @@ function calculateEnhancedSimilarity(post1, post2) {
   const labels1 = (post1.labels || []).map(l => l.toLowerCase());
   const labels2 = (post2.labels || []).map(l => l.toLowerCase());
   
+  // Initialize matching factors array
+  const matchingFactors = [];
+  
   // 1. Direct label matching (25% weight)
   const directMatches = labels1.filter(l => 
     l !== 'lost' && l !== 'found' && labels2.includes(l)
   );
   scores.labelMatch = directMatches.length > 0 ? Math.min(directMatches.length * 0.1, 0.25) : 0;
+  if (directMatches.length > 0) {
+    matchingFactors.push(`Shared labels: ${directMatches.join(', ')}`);
+  }
   
   // 2. Semantic/multilingual matching (30% weight)
   let semanticMatches = 0;
+  const semanticMatchLabels = [];
+  
   for (const label1 of labels1) {
     if (label1 === 'lost' || label1 === 'found') continue;
     
     // Check direct translations
     const translations = multilingualDictionary[label1] || [];
     const hasTranslation = labels2.some(l2 => translations.includes(l2));
-    if (hasTranslation) semanticMatches++;
+    if (hasTranslation) {
+      semanticMatches++;
+      semanticMatchLabels.push(label1);
+    }
     
     // Check if any label2 translates to label1
     for (const label2 of labels2) {
@@ -1274,17 +1293,20 @@ function calculateEnhancedSimilarity(post1, post2) {
       const reverseTranslations = multilingualDictionary[label2] || [];
       if (reverseTranslations.includes(label1)) {
         semanticMatches++;
+        semanticMatchLabels.push(label1);
         break;
       }
     }
   }
   
   // Also check text content for semantic matches
+  const textSemanticMatches = [];
   for (const [word, translations] of Object.entries(multilingualDictionary)) {
     if (text1.includes(word)) {
       for (const translation of translations) {
         if (text2.includes(translation)) {
           semanticMatches++;
+          textSemanticMatches.push(word);
           break;
         }
       }
@@ -1292,6 +1314,12 @@ function calculateEnhancedSimilarity(post1, post2) {
   }
   
   scores.semanticMatch = semanticMatches > 0 ? Math.min(semanticMatches * 0.08, 0.3) : 0;
+  if (semanticMatchLabels.length > 0) {
+    matchingFactors.push(`Multilingual matches: ${semanticMatchLabels.join(', ')}`);
+  }
+  if (textSemanticMatches.length > 0) {
+    matchingFactors.push(`Text similarities: ${textSemanticMatches.join(', ')}`);
+  }
   
   // 3. Text similarity (20% weight)
   const words1 = text1.split(/\s+/).filter(w => w.length > 2);
@@ -1301,6 +1329,9 @@ function calculateEnhancedSimilarity(post1, post2) {
   if (words1.length > 0 && words2.length > 0) {
     const similarity = commonWords.length / Math.max(words1.length, words2.length);
     scores.textSimilarity = similarity * 0.2;
+    if (commonWords.length > 0) {
+      matchingFactors.push(`Common words: ${commonWords.slice(0, 3).join(', ')}${commonWords.length > 3 ? '...' : ''}`);
+    }
   }
   
   // 4. Location proximity (15% weight)
@@ -1311,10 +1342,12 @@ function calculateEnhancedSimilarity(post1, post2) {
     // Exact location match
     if (loc1 === loc2) {
       scores.locationMatch = 0.15;
+      matchingFactors.push(`Same location: ${post1.location}`);
     }
     // Partial location match
     else if (loc1.includes(loc2) || loc2.includes(loc1)) {
       scores.locationMatch = 0.08;
+      matchingFactors.push(`Similar location`);
     }
     // Common location keywords
     else {
@@ -1322,7 +1355,10 @@ function calculateEnhancedSimilarity(post1, post2) {
       const hasCommonLocation = locationKeywords.some(keyword => 
         loc1.includes(keyword) && loc2.includes(keyword)
       );
-      if (hasCommonLocation) scores.locationMatch = 0.05;
+      if (hasCommonLocation) {
+        scores.locationMatch = 0.05;
+        matchingFactors.push(`Related location area`);
+      }
     }
   }
   
@@ -1334,14 +1370,17 @@ function calculateEnhancedSimilarity(post1, post2) {
     // Items lost/found within 24 hours get highest score
     if (hoursDiff <= 24) {
       scores.timeProximity = 0.1;
+      matchingFactors.push(`Posted within 24 hours`);
     }
     // Within a week gets medium score
     else if (hoursDiff <= 168) {
       scores.timeProximity = 0.05;
+      matchingFactors.push(`Posted within same week`);
     }
     // Within a month gets small score
     else if (hoursDiff <= 720) {
       scores.timeProximity = 0.02;
+      matchingFactors.push(`Posted within same month`);
     }
   }
   
@@ -1354,6 +1393,7 @@ function calculateEnhancedSimilarity(post1, post2) {
     breakdown: scores,
     directMatches,
     semanticMatches,
+    matchingFactors: matchingFactors.length > 0 ? matchingFactors : ['General item similarity'],
     factors: {
       labels: directMatches,
       commonWords: commonWords || [],
@@ -1538,6 +1578,9 @@ function renderMatchCategory(title, matches, category) {
 function renderMatchCard(match) {
   const { myPost, otherPost, similarity } = match;
   
+  // Defensive check for matchingFactors
+  const matchingFactors = similarity.matchingFactors || ['General item similarity'];
+  
   return `
     <div class="match-card" data-match='${JSON.stringify(match).replace(/'/g, "&apos;")}'>
       <div class="match-score ${getConfidenceClass(similarity.confidence)}">
@@ -1563,31 +1606,19 @@ function renderMatchCard(match) {
       <div class="match-factors">
         <div class="factors-title">Matching factors:</div>
         <div class="factors-list">
-          ${similarity.matchingFactors.slice(0, 2).map(factor => `<span class="factor">${factor}</span>`).join('')}
-          ${similarity.matchingFactors.length > 2 ? `<span class="factor-more">+${similarity.matchingFactors.length - 2} more</span>` : ''}
+          ${matchingFactors.slice(0, 2).map(factor => `<span class="factor">${factor}</span>`).join('')}
+          ${matchingFactors.length > 2 ? `<span class="factor-more">+${matchingFactors.length - 2} more</span>` : ''}
         </div>
       </div>
     </div>
   `;
 }
 
-// Helper functions
+// Helper function to get confidence class for styling
 function getConfidenceClass(confidence) {
   if (confidence >= 70) return 'high';
   if (confidence >= 40) return 'medium';
   return 'low';
-}
-
-function truncateText(text, maxLength) {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + '...';
-}
-
-function closeMatchesModal() {
-  const modal = document.querySelector('.matches-modal');
-  if (modal) {
-    modal.remove();
-  }
 }
 
 // Enhanced detailed match preview function
@@ -1613,6 +1644,9 @@ function showDetailedMatchPreview(matchData) {
       minute: '2-digit'
     });
   };
+  
+  // Defensive check for matchingFactors
+  const matchingFactors = similarity.matchingFactors || ['General item similarity'];
   
   previewModal.innerHTML = `
     <div class="preview-content">
@@ -1712,7 +1746,7 @@ function showDetailedMatchPreview(matchData) {
       <div class="matching-analysis">
         <h4>🎯 Why This Matches:</h4>
         <div class="factors-grid">
-          ${similarity.matchingFactors.map(factor => `
+          ${matchingFactors.map(factor => `
             <div class="factor-item">
               <i class="fas fa-check-circle"></i>
               <span>${escapeHtml(factor)}</span>
@@ -2099,7 +2133,7 @@ function addMatchesModalStyles() {
     
     @media (max-width: 768px) {
       .matches-modal .modal-content {
-        width: 98%;
+        width:  98%;
         margin: 1%;
       }
       
@@ -2539,6 +2573,13 @@ function setupNotificationClickHandler() {
       }
     });
   });
+}
+
+// Add the missing truncateText function
+function truncateText(text, maxLength = 100) {
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + '...';
 }
 
 
