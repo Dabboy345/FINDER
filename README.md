@@ -187,6 +187,7 @@ This section contains video demonstrations and tutorials for the FINDER applicat
 * **Feature Showcase:** Individual feature demonstrations and use cases
 
 [![Demo Video](https://img.shields.io/badge/▶️-Watch%20Demo%20Video-blue?style=for-the-badge)](https://drive.google.com/file/d/1KazIEoHJ69tkYeHBT2Nnj8cEuz_trPst/view?usp=sharing)
+
 *Click the button above to watch demo video of our app*
 
 ---
