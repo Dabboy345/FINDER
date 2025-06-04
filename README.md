@@ -96,6 +96,7 @@ These are the technologies that we have used for our project.
 ## App Architecture
 
 FINDER is built using a modern web architecture with the following components:
+![FINDER Architecture](./public/FINDER%20Architecture.png)
 
 ### Frontend Architecture
 * **Single Page Application (SPA):** Client-side routing and dynamic content loading
@@ -113,7 +114,7 @@ FINDER is built using a modern web architecture with the following components:
   - User claims and interactions
   - Real-time notifications
 * **Firebase Authentication:** Secure user management and session handling
-* **Firebase Hosting:** Static web hosting with custom domain support
+* **Firebase Hosting:** Static web hosting with custom domain support.Not avaliable at the moment. 
 
 ### Real-time Features
 * **Live Data Synchronization:** Posts, messages, and notifications update in real-time
@@ -123,18 +124,45 @@ FINDER is built using a modern web architecture with the following components:
 ### File Structure
 ```
 FINDER/
-├── public/                    # Frontend application
-│   ├── index.html            # Login page
-│   ├── main_page/            # Main application features
-│   │   ├── main_page.html    # Feed and posts display
-│   │   ├── post-creation.html # Create new posts
-│   │   ├── post-details.html # Individual post view
-│   │   └── *.js              # JavaScript modules
-│   ├── profile/              # User dashboard
-│   ├── signup/               # Registration
-│   └── firebase_config.js    # Firebase configuration
-├── firebase.json             # Firebase hosting config
-└── storage.rules            # Database security rules
+├── cors.json                 # CORS configuration
+├── firebase.json             # Firebase hosting configuration
+├── package.json              # Project dependencies and scripts
+├── README.md                 # Project documentation
+├── storage.rules             # Firebase storage security rules
+└── public/                   # Frontend application
+    ├── index.html            # Login/Landing page
+    ├── index.js              # Login page logic
+    ├── index.css             # Login page styles
+    ├── FINDER_LOGO.jpeg      # Application logo
+    ├── firebase_config.js    # Firebase configuration
+    ├── config.example.js     # Configuration template
+    ├── about/                # About page
+    │   ├── about.html
+    │   └── about.css
+    ├── contact/              # Contact page
+    │   ├── contact.html
+    │   └── contact.css
+    ├── signup/               # User registration
+    │   ├── signup.html
+    │   ├── signup.js
+    │   └── signup.css
+    ├── profile/              # User dashboard
+    │   ├── profile.html
+    │   ├── profile.js
+    │   └── profile.css
+    └── main_page/            # Core application features
+        ├── main_page.html    # Main feed interface
+        ├── main_page.js      # Main feed logic
+        ├── main_page.css     # Main feed styles
+        ├── post-creation.html # Post creation interface
+        ├── post-creation.js  # Post creation logic
+        ├── post-creation.css # Post creation styles
+        ├── post-details.html # Individual post view
+        ├── post-details.js   # Post details logic
+        ├── post-details.css  # Post details styles
+        ├── script.js         # Additional utilities
+        ├── style.css         # Additional styles
+        └── default-image.png # Fallback image
 ```
 
 ### Security & Performance
@@ -147,25 +175,13 @@ FINDER/
 ## Videos & Demonstrations
 
 This section contains video demonstrations and tutorials for the FINDER application:
-
+**[INTRODUCTION](link)**
 ### App Demo Videos
 * **Complete Application Demo:** Full walkthrough of all FINDER features and functionality
 * **User Journey Video:** Step-by-step demonstration of typical user workflows
 * **Feature Showcase:** Individual feature demonstrations and use cases
 
-### Tutorial Videos
-* **Getting Started Guide:** How to sign up, log in, and navigate the application
-* **Creating Posts:** Tutorial on how to create effective lost and found posts
-* **Using the Chat System:** Guide to communicating with other users
-* **Smart Matching Feature:** How to use the automatic matching system
-
-### Technical Videos
-* **Architecture Overview:** Technical explanation of the app's structure and components
-* **Development Process:** Behind-the-scenes look at the development workflow
-* **Firebase Integration:** How real-time features are implemented
-
-*Note: Video links and demonstrations will be added here as they become available.*
-
+**[DEMO VIDEO](https://shorturl.at/kQv6c)**
 ---
 
 ## Getting Started
@@ -180,7 +196,6 @@ Since this a web app you need to have a web browser.
 
 In this google document you can find the instruction to try the app.
 https://shorturl.at/3FoLa
-
 ---
 
 

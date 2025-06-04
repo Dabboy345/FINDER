@@ -176,6 +176,25 @@ section p {
   margin-top: 1rem;
 }
 
+.feature-category {
+  margin-bottom: 2rem;
+}
+
+.feature-category h3 {
+  color: #667eea;
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #667eea;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.feature-category h3 i {
+  font-size: 1.2rem;
+}
+
 .feature-item {
   display: flex;
   align-items: flex-start;
