@@ -179,7 +179,7 @@ This section contains video demonstrations and tutorials for the FINDER applicat
 ### App Demo Videos
 * **Complete Application Demo:** Full walkthrough of all FINDER features and functionality
 * **User Journey Video:** Step-by-step demonstration of typical user workflows
-* **Feature Showcase:** Individual feature demonstrations and use cases
+* **Feature Showcase:** Individual feature demonstrations and use cases:
 **[DEMO VIDEO](https://shorturl.at/kQv6c)**
 ---
 
@@ -195,6 +195,7 @@ Since this a web app you need to have a web browser.
 
 In this google document you can find the instruction to try the app.
 https://shorturl.at/3FoLa
+
 ---
 
 
