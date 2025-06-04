@@ -174,13 +174,21 @@ FINDER/
 
 ## Videos & Demonstrations
 
-This section contains video demonstrations and tutorials for the FINDER application:
-**[INTRODUCTION](link)**
+This section contains video demonstrations and tutorials for the FINDER application.
+
+### Introduction Video
+[![FINDER Introduction Video](https://img.shields.io/badge/▶️-Watch%20Introduction%20Video-red?style=for-the-badge)](https://drive.google.com/file/d/1jA9ojMguQwsVyhpX7i7tkCgW9rO7CACz/view?usp=sharing)
+
+*Click the button above to watch our comprehensive introduction to FINDER*
+
 ### App Demo Videos
 * **Complete Application Demo:** Full walkthrough of all FINDER features and functionality
 * **User Journey Video:** Step-by-step demonstration of typical user workflows
-* **Feature Showcase:** Individual feature demonstrations and use cases:
-**[DEMO VIDEO](https://shorturl.at/kQv6c)**
+* **Feature Showcase:** Individual feature demonstrations and use cases
+
+[![Demo Video](https://img.shields.io/badge/▶️-Watch%20Demo%20Video-blue?style=for-the-badge)](https://drive.google.com/file/d/1KazIEoHJ69tkYeHBT2Nnj8cEuz_trPst/view?usp=sharing)
+*Click the button above to watch demo video of our app*
+
 ---
 
 ## Getting Started
