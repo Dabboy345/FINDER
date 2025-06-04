@@ -445,35 +445,27 @@ async function loadNotifications() {
     .filter(([, n]) => n.to === currentUser.uid)
     .sort(([, a], [, b]) => (b.lastUpdated || b.timestamp || 0) - (a.lastUpdated || a.timestamp || 0));
   notificationDropdown.innerHTML = notifications.map(([id, notification]) => {
-    const timeString = new Date(notification.lastUpdated || notification.timestamp).toLocaleString();
+    const timeString = formatDate(notification.lastUpdated || notification.timestamp);
+    const claimCount = notification.claimCount || 1;
+    
     return `
       <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${id}">
         <div class="notification-title">
           <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
-          ${notification.title}
+          ${escapeHtml(notification.title)}
         </div>
-        <div class="notification-message">${notification.message}</div>
+        <div class="notification-message">
+          ${claimCount > 1 ?
+            `${claimCount} people want to claim your item` :
+            escapeHtml(notification.message)
+          }
+        </div>
         <div class="notification-time">${timeString}</div>
       </div>
     `;
   }).join('');
 
-  // Add click handler for notification items
-  notificationDropdown.querySelectorAll('.notification-item').forEach(item => {
-    item.addEventListener('click', async () => {
-      const notificationId = item.dataset.id;
-      // Mark as read
-      await set(ref(db, `notifications/${notificationId}/read`), true);
-      item.classList.remove('unread');
-      // Redirect for match notifications
-      const notification = data[notificationId];
-      if (notification.type === 'match' && notification.postId && notification.matchedWithId) {
-        window.location.href = `../main_page/post-details.html?id=${encodeURIComponent(notification.postId)}&matchedWith=${encodeURIComponent(notification.matchedWithId)}`;
-      } else if (notification.postId) {
-        window.location.href = `../main_page/post-details.html?id=${encodeURIComponent(notification.postId)}`;
-      }
-    });
-  });
+  setupNotificationClickHandler();
 }
 
 // 5. Toggle dropdown on bell click (not on the badge or dropdown itself)
@@ -500,6 +492,213 @@ onAuthStateChanged(auth, (user) => {
     listenForNotifications(user.uid);
   }
 });
+
+// Notification detail modal functionality
+const notificationDetailModal = document.getElementById('notificationDetailModal');
+if (notificationDetailModal) {
+  notificationDetailModal.style.display = 'none';
+  document.addEventListener('DOMContentLoaded', () => {
+    notificationDetailModal.style.display = 'none';
+  });
+  const closeBtn = document.getElementById('closeNotificationDetail');
+  if (closeBtn) {
+    closeBtn.onclick = function() {
+      notificationDetailModal.style.display = 'none';
+    };
+  }
+}
+
+// Add delete notification functionality with null check
+const deleteNotificationBtn = document.getElementById('deleteNotificationBtn');
+if (deleteNotificationBtn) {
+  deleteNotificationBtn.onclick = async function() {
+    const notificationId = this.dataset.notificationId;
+    if (!notificationId) return;
+
+    if (confirm('Are you sure you want to delete this notification?')) {
+      try {
+        const notificationRef = ref(db, `notifications/${notificationId}`);
+        await set(notificationRef, null);
+        notificationDetailModal.style.display = 'none';
+        loadNotifications(); // Refresh notifications list
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        alert('Error deleting notification. Please try again.');
+      }
+    }
+  };
+}
+
+// Enhanced notification click handler
+function setupNotificationClickHandler() {
+  document.querySelectorAll('.notification-item').forEach(item => {
+    item.addEventListener('click', async function() {
+      const notificationId = this.dataset.id;
+      const notificationsRef = ref(db, 'notifications');
+      const snapshot = await get(notificationsRef);
+      const data = snapshot.val();
+      
+      if (data && data[notificationId]) {
+        const notification = { ...data[notificationId], id: notificationId };
+        
+        // Mark as read
+        await update(ref(db, `notifications/${notificationId}`), { read: true });
+        
+        // Show detailed notification
+        await showNotificationDetail(notification);
+        if (notificationDetailModal) {
+          notificationDetailModal.style.display = 'flex';
+        }
+        
+        // Refresh notifications to update read status
+        loadNotifications();
+      }
+    });
+  });
+}
+
+// Show notification detail function
+async function showNotificationDetail(notification) {
+  // Set the notification ID for the delete button - add null check
+  const deleteBtn = document.getElementById('deleteNotificationBtn');
+  if (deleteBtn) {
+    deleteBtn.dataset.notificationId = notification.id;
+  }
+
+  let html = `
+    <div class="notification-header">
+      <div class="notification-title">
+        <i class="fas ${notification.type === 'claim' ? 'fa-hand-holding' : 'fa-tag'}"></i>
+        ${escapeHtml(notification.title)}
+      </div>
+      <div class="notification-time">
+        Created: ${formatDate(notification.timestamp)}<br>
+        Last updated: ${formatDate(notification.lastUpdated)}
+      </div>
+    </div>
+  `;
+
+  if (notification.claims && notification.claims.length > 0) {
+    html += `
+      <div class="claims-list">
+        <h3>Claim Messages (${notification.claims.length})</h3>
+        ${notification.claims.map(claim => `
+          <div class="claim-item">
+            <div class="claim-header">
+              <strong>${escapeHtml(claim.from.email)}</strong>
+              <span>${formatDate(claim.timestamp)}</span>
+            </div>
+            <div class="claim-message">${formatMessage(claim.message)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  if (notification.postId) {
+    const post = await getPostById(notification.postId);
+    let matchedWithPost = null;
+    if (notification.matchedWithId) {
+      matchedWithPost = await getPostById(notification.matchedWithId);
+    }
+    if (post && matchedWithPost) {
+      html += `
+        <div class="post-details" style="display:flex;gap:1.5rem;flex-wrap:wrap;justify-content:center;">
+          <div style="flex:1;min-width:180px;max-width:260px;">
+            <h3>Your Post</h3>
+            <div class="post-title">${escapeHtml(matchedWithPost.title)}</div>
+            ${matchedWithPost.imageData ? 
+              `<img src="${matchedWithPost.imageData}" alt="${escapeHtml(matchedWithPost.title)}" 
+                    style="max-width:100%;margin:10px 0;" 
+                    onerror="this.onerror=null;this.src='default-image.png';" />` : 
+              ''
+            }
+            ${matchedWithPost.description ? 
+              `<div class="post-description">${formatMessage(matchedWithPost.description)}</div>` : 
+              ''
+            }
+            ${matchedWithPost.labels && matchedWithPost.labels.length ? 
+              `<div class="post-labels">
+                ${matchedWithPost.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+              </div>` : 
+              ''
+            }
+          </div>
+          <div style="flex:1;min-width:180px;max-width:260px;">
+            <h3>Matched Post</h3>
+            <div class="post-title">${escapeHtml(post.title)}</div>
+            ${post.imageData ? 
+              `<img src="${post.imageData}" alt="${escapeHtml(post.title)}" 
+                    style="max-width:100%;margin:10px 0;" 
+                    onerror="this.onerror=null;this.src='default-image.png';" />` : 
+              ''
+            }
+            ${post.description ? 
+              `<div class="post-description">${formatMessage(post.description)}</div>` : 
+              ''
+            }
+            ${post.labels && post.labels.length ? 
+              `<div class="post-labels">
+                ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+              </div>` : 
+              ''
+            }
+          </div>
+        </div>
+      `;
+    } else if (post) {
+      html += `
+        <div class="post-details">
+          <h3>Post Details</h3>
+          <div class="post-title">${escapeHtml(post.title)}</div>
+          ${post.imageData ? 
+            `<img src="${post.imageData}" alt="${escapeHtml(post.title)}" 
+                  style="max-width:100%;margin:10px 0;" 
+                  onerror="this.onerror=null;this.src='default-image.png';" />` : 
+            ''
+          }
+          ${post.description ? 
+            `<div class="post-description">${formatMessage(post.description)}</div>` : 
+            ''
+          }
+          ${post.labels && post.labels.length ? 
+            `<div class="post-labels">
+              ${post.labels.map(l => `<span class="label">${escapeHtml(l)}</span>`).join(' ')}
+            </div>` : 
+            ''
+          }
+        </div>
+      `;
+    }
+  }
+
+  document.getElementById('notificationDetailBody').innerHTML = html;
+}
+
+// Helper functions for notification display
+function formatDate(timestamp) {
+  if (!timestamp) return 'Unknown date';
+  const date = new Date(timestamp);
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+function formatMessage(message) {
+  if (!message) return '';
+  return escapeHtml(message).replace(/\n/g, '<br>');
+}
+
+async function getPostById(postId) {
+  const postRef = ref(db, `posts/${postId}`);
+  const snapshot = await get(postRef);
+  return snapshot.exists() ? snapshot.val() : null;
+}
 
 // Make openChat function globally available
 window.openChat = openChat;

@@ -745,8 +745,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Update notification click handler to show details
 async function showNotificationDetail(notification) {
-  // Set the notification ID for the delete button
-  document.getElementById('deleteNotificationBtn').dataset.notificationId = notification.id;
+  // Set the notification ID for the delete button - add null check
+  const deleteBtn = document.getElementById('deleteNotificationBtn');
+  if (deleteBtn) {
+    deleteBtn.dataset.notificationId = notification.id;
+  }
 
   let html = `
     <div class="notification-header">
@@ -2114,7 +2117,7 @@ function addMatchesModalStyles() {
     }
     
     .primary-btn {
-      background: #3498db;
+           background: #3498db;
       color: white;
     }
     

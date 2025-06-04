@@ -1,10 +1,245 @@
-rules_version = '2';
-
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
+{
+  "rules": {
+    // Root level - deny all access by default except authenticated users
+    ".read": false,
+    ".write": false,
+    
+    // Posts collection - core functionality for lost/found items
+    "posts": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp", "type", "claimed"],
+      "$postId": {
+        ".write": "auth != null && (
+          // Allow creation of new posts
+          (!data.exists() && newData.child('user/uid').val() == auth.uid) ||
+          // Allow post owner to update their own posts
+          (data.exists() && data.child('user/uid').val() == auth.uid) ||
+          // Allow claiming posts (setting claimed status and claimedBy)
+          (data.exists() && 
+           (data.child('claimed').val() == false || data.child('claimed').val() == null) && 
+           newData.child('claimed').val() == true &&
+           newData.child('claimedBy/uid').val() == auth.uid &&
+           newData.child('user/uid').val() != auth.uid) ||
+          // Allow unclaiming posts (user who claimed can unclaim)
+          (data.exists() && 
+           data.child('claimed').val() == true &&
+           data.child('claimedBy/uid').val() == auth.uid &&
+           newData.child('claimed').val() == false &&
+           newData.child('claimedBy').val() == null)
+        )",
+        ".validate": "newData.hasChildren(['title', 'timestamp', 'user', 'type', 'claimed'])",
+        
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 1000"
+        },
+        "type": {
+          ".validate": "newData.isString() && (newData.val() == 'lost' || newData.val() == 'found')"
+        },
+        "claimed": {
+          ".validate": "newData.isBoolean()"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "lastEdited": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "labels": {
+          ".validate": "newData.hasChildren()",
+          "$labelIndex": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+          }
+        },
+        "imageData": {
+          ".validate": "newData.isString()"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "user": {
+          ".validate": "newData.hasChildren(['uid', 'email'])",
+          "uid": {
+            ".validate": "newData.isString() && newData.val() == auth.uid"
+          },
+          "email": {
+            ".validate": "newData.isString() && newData.val() == auth.token.email"
+          }
+        },
+        "claimedBy": {
+          ".validate": "newData.hasChildren(['uid', 'email', 'timestamp'])",
+          "uid": {
+            ".validate": "newData.isString()"
+          },
+          "email": {
+            ".validate": "newData.isString()"
+          },
+          "timestamp": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          }
+        }
+      }
+    },
+    
+    // Notifications - allow authenticated users to create and read notifications
+    "notifications": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["to", "timestamp", "read"],
+      "$notificationId": {
+        ".read": "auth != null && data.child('to').val() == auth.uid",
+        ".write": "auth != null && (
+          // Allow creating new notifications
+          !data.exists() ||
+          // Allow the recipient to update (mark as read)
+          data.child('to').val() == auth.uid ||
+          // Allow updating existing notifications (for claim consolidation)
+          data.exists()
+        )",
+        ".validate": "newData.hasChildren(['to', 'title', 'message', 'type', 'timestamp', 'read'])",
+        
+        "to": {
+          ".validate": "newData.isString()"
+        },
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+        },
+        "message": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500"
+        },
+        "type": {
+          ".validate": "newData.isString() && (newData.val() == 'claim' || newData.val() == 'match' || newData.val() == 'chat' || newData.val() == 'returned' || newData.val() == 'tag')"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "lastUpdated": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "read": {
+          ".validate": "newData.isBoolean()"
+        },
+        "postId": {
+          ".validate": "newData.isString()"
+        },
+        "matchedWithId": {
+          ".validate": "newData.isString()"
+        },
+        "matchConfidence": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1"
+        },
+        "claimCount": {
+          ".validate": "newData.isNumber() && newData.val() >= 1"
+        },
+        "claims": {
+          "$claimIndex": {
+            ".validate": "newData.hasChildren(['from', 'message', 'timestamp'])",
+            "from": {
+              ".validate": "newData.hasChildren(['uid', 'email'])"
+            },
+            "message": {
+              ".validate": "newData.isString() && newData.val().length <= 500"
+            },
+            "timestamp": {
+              ".validate": "newData.isNumber() && newData.val() <= now"
+            }
+          }
+        }
+      }
+    },
+    
+    // Claims - temporary storage for claim requests
+    "claims": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["postId", "timestamp"],
+      "$claimId": {
+        ".read": "auth != null && (data.child('from/uid').val() == auth.uid || data.child('to/uid').val() == auth.uid)",
+        ".validate": "newData.hasChildren(['postId', 'postTitle', 'to', 'from', 'message', 'timestamp'])",
+        
+        "postId": {
+          ".validate": "newData.isString()"
+        },
+        "postTitle": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "message": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "to": {
+          ".validate": "newData.hasChildren(['uid', 'email'])"
+        },
+        "from": {
+          ".validate": "newData.hasChildren(['uid', 'email'])",
+          "uid": {
+            ".validate": "newData.isString() && newData.val() == auth.uid"
+          },
+          "email": {
+            ".validate": "newData.isString() && newData.val() == auth.token.email"
+          }
+        }
+      }
+    },
+    
+    // Chats - real-time messaging between users
+    "chats": {
+      ".read": false,
+      ".write": false,
+      "$chatId": {
+        // Chat ID format: userId1_userId2_postId (sorted user IDs)
+        ".read": "auth != null && ($chatId.contains(auth.uid + '_') || $chatId.contains('_' + auth.uid + '_') || $chatId.beginsWith(auth.uid + '_'))",
+        ".write": "auth != null && ($chatId.contains(auth.uid + '_') || $chatId.contains('_' + auth.uid + '_') || $chatId.beginsWith(auth.uid + '_'))",
+        
+        "messages": {
+          ".indexOn": ["timestamp"],
+          "$messageId": {
+            ".validate": "newData.hasChildren(['text', 'senderId', 'senderEmail', 'timestamp'])",
+            "text": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 1000"
+            },
+            "senderId": {
+              ".validate": "newData.isString() && newData.val() == auth.uid"
+            },
+            "senderEmail": {
+              ".validate": "newData.isString() && newData.val() == auth.token.email"
+            },
+            "timestamp": {
+              ".validate": "newData.isNumber() && newData.val() <= now"
+            }
+          }
+        }
+      }
+    },
+    
+    // User profiles (optional - for extended user data)
+    "users": {
+      ".read": "auth != null",
+      "$userId": {
+        ".read": "auth != null",
+        ".write": "auth != null && $userId == auth.uid",
+        ".validate": "newData.hasChildren(['email'])",
+        
+        "email": {
+          ".validate": "newData.isString() && newData.val() == auth.token.email"
+        },
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "degree": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "lastActive": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        }
+      }
     }
   }
-} 
+}

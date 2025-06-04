@@ -521,400 +521,106 @@ body {
 .notification-container {
     position: relative;
     cursor: pointer;
+    padding: 8px;
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.notification-container:hover {
+    background: rgba(52, 152, 219, 0.1);
+    transform: scale(1.05);
 }
 
 .notification-container i {
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     color: #7f8c8d;
-    transition: color 0.3s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .notification-container:hover i {
     color: #3498db;
+    text-shadow: 0 0 8px rgba(52, 152, 219, 0.3);
 }
 
 #notificationBadge {
     position: absolute;
-    top: -5px;
-    right: -5px;
-    background-color: #e74c3c;
+    top: -2px;
+    right: -2px;
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     color: white;
     border-radius: 50%;
-    padding: 2px 6px;
-    font-size: 0.7rem;
+    padding: 3px 7px;
+    font-size: 0.75rem;
+    font-weight: 700;
     display: none;
-}
-
-/* Scrollbar styles for notification dropdown */
-.notification-dropdown::-webkit-scrollbar {
-    width: 6px;
-}
-
-.notification-dropdown::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-
-.notification-dropdown::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 3px;
-}
-
-.notification-dropdown::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-.post-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-}
-
-.post-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.edit-btn, .delete-btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: background-color 0.2s ease;
-}
-
-.edit-btn {
-    background-color: #3498db;
-    color: white;
-}
-
-.edit-btn:hover {
-    background-color: #2980b9;
-}
-
-.delete-btn {
-    background-color: #e74c3c;
-    color: white;
-}
-
-.delete-btn:hover {
-    background-color: #c0392b;
-}
-
-.mark-returned-btn {
-    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
-    color: white;
-    border: none;
-    padding: 0.8rem 1.5rem;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 3px 12px rgba(39, 174, 96, 0.25);
-    position: relative;
-    overflow: hidden;
-}
-
-.mark-returned-btn::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.3);
-    transition: all 0.6s ease;
-    transform: translate(-50%, -50%);
-}
-
-.mark-returned-btn:hover::before {
-    width: 200px;
-    height: 200px;
-}
-
-.mark-returned-btn:hover {
-    background: linear-gradient(135deg, #229954 0%, #1e8449 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(39, 174, 96, 0.35);
-}
-
-.mark-returned-btn i {
-    font-size: 1rem;
-    z-index: 1;
-    position: relative;
-}
-
-/* Edit Modal Styles */
-#editPostForm {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-#editPostForm label {
-    font-weight: 500;
-    color: #2c3e50;
-}
-
-#editPostForm input,
-#editPostForm textarea {
-    width: 100%;
-    padding: 1rem;
-    border: 2px solid #e1e8ed;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-family: inherit;
-    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-#editPostForm input:focus,
-#editPostForm textarea:focus {
-    outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1), 0 4px 12px rgba(52, 152, 219, 0.15);
-    transform: translateY(-1px);
-}
-
-#editPostForm textarea {
-    min-height: 120px;
-    resize: vertical;
-}
-
-.modal-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1rem;
-}
-
-.modal-buttons button {
-    padding: 1rem 2rem;
-    border: none;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-}
-
-.modal-buttons button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s;
-}
-
-.modal-buttons button:hover::before {
-    left: 100%;
-}
-
-.modal-buttons button[type="button"] {
-    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
-    color: white;
-    box-shadow: 0 4px 15px rgba(149, 165, 166, 0.3);
-}
-
-.modal-buttons button[type="button"]:hover {
-    background: linear-gradient(135deg, #7f8c8d 0%, #6c7b7d 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(149, 165, 166, 0.4);
-}
-
-.modal-buttons button[type="submit"] {
-    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
-    color: white;
-    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
-}
-
-.modal-buttons button[type="submit"]:hover {
-    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(46, 204, 113, 0.4);
-}
-
-/* Last edited timestamp */
-.last-edited {
-    font-size: 0.8rem;
-    color: #95a5a6;
-    font-style: italic;
-    margin-top: 0.5rem;
-}
-
-/* Post ownership styles */
-.post.own-post {
-    border-left: 4px solid #3498db;
-    background-color: #f8fafc;
-}
-
-.owner-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    background-color: #3498db;
-    color: white;
-    padding: 0.2rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    margin-left: 0.5rem;
-}
-
-.owner-badge i {
-    color: #ffd700;
-    font-size: 0.9rem;
-}
-
-.owner-message {
+    min-width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    margin-top: 1rem;
-    padding: 0.8rem;
-    background-color: #f1f9ff;
-    border-radius: 8px;
-    color: #3498db;
-    font-size: 0.9rem;
+    box-shadow: 0 3px 12px rgba(231, 76, 60, 0.4), 0 0 0 2px white;
+    animation: bounceIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
-.owner-message i {
-    color: #3498db;
-}
-
-/* Update post meta styles to accommodate owner badge */
-.post .post-meta .author {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.post .post-meta .author i {
-    color: #3498db;
-}
-
-/* Recommendations summary styles */
-.recommendations-summary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 1.5rem 2rem;
-    border-radius: 12px;
-    margin-bottom: 2rem;
-    text-align: center;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
-}
-
-.recommendations-summary h3 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.4rem;
-    font-weight: 700;
-}
-
-.recommendations-summary p {
-    margin: 0;
-    font-size: 1rem;
-    opacity: 0.9;
-    font-weight: 500;
-}
-
-.success-recommendations {
-    background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
-    color: white;
-    padding: 1rem 1.5rem;
-    border-radius: 8px;
-    text-align: center;
-    margin-bottom: 1rem;
-    font-weight: 600;
-    box-shadow: 0 2px 10px rgba(78, 205, 196, 0.2);
-}
-
-.warning-recommendations {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
-    padding: 1rem 1.5rem;
-    border-radius: 8px;
-    text-align: center;
-    margin-bottom: 1rem;
-    font-weight: 600;
-    box-shadow: 0 2px 10px rgba(245, 87, 108, 0.2);
-}
-
-.error-message {
-    background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-}
-
-.error-message a {
-    color: #721c24;
-    text-decoration: underline;
-    font-weight: 600;
-}
-
-.error-message a:hover {
-    color: #491217;
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-    .main-content {
-        padding: 1rem;
+@keyframes bounceIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.3);
     }
-
-    .nav-links {
-        gap: 1rem;
+    50% {
+        opacity: 1;
+        transform: scale(1.05);
     }
-
-    .modal-content {
-        margin: 1rem;
-        padding: 1.5rem;
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
     }
 }
 
-/* Notification dropdown styles */
+/* Enhanced notification dropdown styles */
 .notification-dropdown {
     position: absolute;
     top: 100%;
     right: -10px;
-    width: 350px;
-    max-height: 400px;
+    width: 380px;
+    max-height: 450px;
     overflow-y: auto;
     background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-    border-radius: 16px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1);
+    border-radius: 20px;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.25), 0 15px 35px rgba(0, 0, 0, 0.15);
     z-index: 1000;
     display: none;
-    padding: 8px 0;
+    padding: 12px 0;
     border: 1px solid rgba(228, 233, 242, 0.8);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(15px);
+    animation: slideInDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .notification-dropdown::before {
     content: '';
     position: absolute;
-    top: -8px;
-    right: 20px;
+    top: -10px;
+    right: 25px;
     width: 0;
     height: 0;
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    border-bottom: 8px solid #ffffff;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 10px solid #ffffff;
+    filter: drop-shadow(0 -3px 6px rgba(0, 0, 0, 0.1));
 }
 
 .notification-dropdown.show {
@@ -922,12 +628,14 @@ body {
 }
 
 .notification-item {
-    padding: 16px 20px;
-    border-bottom: 1px solid rgba(228, 233, 242, 0.5);
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(228, 233, 242, 0.3);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
+    margin: 0 8px;
+    border-radius: 12px;
 }
 
 .notification-item::before {
@@ -937,8 +645,8 @@ body {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(52, 152, 219, 0.05), transparent);
-    transition: left 0.5s ease;
+    background: linear-gradient(90deg, transparent, rgba(52, 152, 219, 0.08), transparent);
+    transition: left 0.6s ease;
 }
 
 .notification-item:hover::before {
@@ -951,124 +659,204 @@ body {
 
 .notification-item:hover {
     background: linear-gradient(145deg, #f8fafc 0%, #e8f4fd 100%);
-    transform: translateX(4px);
+    transform: translateX(6px) scale(1.02);
+    box-shadow: 0 8px 25px rgba(52, 152, 219, 0.15);
 }
 
 .notification-item.unread {
     background: linear-gradient(145deg, #e8f4fd 0%, #d8ecfc 100%);
     border-left: 4px solid #3498db;
+    position: relative;
+}
+
+.notification-item.unread::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3), 0 0 8px rgba(52, 152, 219, 0.4);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.8;
+    }
 }
 
 .notification-item.unread:hover {
     background: linear-gradient(145deg, #d8ecfc 0%, #c8e2fb 100%);
+    box-shadow: 0 12px 35px rgba(52, 152, 219, 0.25);
 }
 
 .notification-item .notification-title {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-weight: 600;
+    gap: 10px;
+    font-weight: 700;
     color: #2c3e50;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    font-size: 1rem;
 }
 
 .notification-item .notification-title i {
     color: #3498db;
+    font-size: 1.1rem;
+    text-shadow: 0 2px 4px rgba(52, 152, 219, 0.2);
 }
 
 .notification-item .notification-message {
     color: #7f8c8d;
-    font-size: 0.9rem;
-    margin-bottom: 4px;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+    line-height: 1.4;
+    font-weight: 500;
 }
 
 .notification-item .notification-time {
     color: #95a5a6;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-/* Notification detail modal styles */
+/* Enhanced notification detail modal styles */
 #notificationDetailModal .modal-content {
-    width: 600px;
-    max-width: 90vw;
-    max-height: 80vh;
+    width: 650px;
+    max-width: 92vw;
+    max-height: 85vh;
     overflow-y: auto;
+    border-radius: 24px;
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid rgba(228, 233, 242, 0.8);
+    box-shadow: 0 30px 100px rgba(0, 0, 0, 0.2), 0 15px 40px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(20px);
+    animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-}
-
-.delete-notification-btn {
-    background-color: #e74c3c;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: background-color 0.2s ease;
-}
-
-.delete-notification-btn:hover {
-    background-color: #c0392b;
-}
-
-.delete-notification-btn i {
-    font-size: 1rem;
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .notification-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #eee;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid rgba(52, 152, 219, 0.1);
+    background: linear-gradient(135deg, #f8fafc 0%, #e8f4fd 100%);
+    margin: -2.5rem -2.5rem 24px -2.5rem;
+    padding: 2rem 2.5rem 1.5rem 2.5rem;
+    border-radius: 24px 24px 0 0;
 }
 
 .notification-header .notification-title {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 1.2rem;
-    font-weight: 600;
+    gap: 12px;
+    font-size: 1.3rem;
+    font-weight: 700;
     color: #2c3e50;
 }
 
 .notification-header .notification-title i {
     color: #3498db;
+    font-size: 1.4rem;
+    text-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
 }
 
 .notification-header .notification-time {
-    color: #95a5a6;
+    color: #7f8c8d;
     font-size: 0.9rem;
     text-align: right;
-    line-height: 1.4;
+    line-height: 1.5;
+    font-weight: 600;
+    background: white;
+    padding: 8px 12px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+.delete-notification-btn {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.25rem;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+}
+
+.delete-notification-btn:hover {
+    background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4);
+}
+
+.delete-notification-btn i {
+    font-size: 1rem;
+}
+
+/* Enhanced claims list styling */
 .claims-list {
-    margin: 20px 0;
+    margin: 24px 0;
 }
 
 .claims-list h3 {
     color: #2c3e50;
-    margin-bottom: 12px;
-    font-size: 1.1rem;
+    margin-bottom: 16px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.claims-list h3::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    border-radius: 2px;
 }
 
 .claim-item {
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 12px;
+    background: linear-gradient(145deg, #f8f9fa 0%, #ffffff 100%);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(228, 233, 242, 0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.claim-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 .claim-item:last-child {
@@ -1079,49 +867,83 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(228, 233, 242, 0.3);
 }
 
 .claim-header strong {
     color: #2c3e50;
+    font-weight: 700;
+    font-size: 1rem;
 }
 
 .claim-header span {
     color: #95a5a6;
     font-size: 0.9rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #ecf0f1, #d5dbdb);
+    padding: 4px 8px;
+    border-radius: 8px;
 }
 
 .claim-message {
     color: #34495e;
-    font-size: 0.95rem;
+    font-size: 1rem;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+    background: white;
+    padding: 12px;
+    border-radius: 12px;
+    border-left: 3px solid #3498db;
 }
 
+/* Enhanced post details styling */
 .post-details {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid #eee;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 2px solid rgba(52, 152, 219, 0.1);
 }
 
 .post-details h3 {
     color: #2c3e50;
-    margin-bottom: 12px;
-    font-size: 1.1rem;
+    margin-bottom: 16px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.post-details h3::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: linear-gradient(135deg, #27ae60, #229954);
+    border-radius: 2px;
 }
 
 .post-title {
-    font-size: 1.1rem;
-    font-weight: 600;
+    font-size: 1.2rem;
+    font-weight: 700;
     color: #2c3e50;
     margin-bottom: 12px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #f8fafc, #e8f4fd);
+    border-radius: 12px;
+    border-left: 4px solid #3498db;
 }
 
 .post-description {
     color: #34495e;
     margin: 12px 0;
-    line-height: 1.4;
+    line-height: 1.6;
+    font-size: 1rem;
+    background: white;
+    padding: 12px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .post-labels {
@@ -1132,11 +954,19 @@ body {
 }
 
 .post-labels .label {
-    background-color: #e8f4fd;
+    background: linear-gradient(135deg, #e8f4fd, #d8ecfc);
     color: #3498db;
-    padding: 4px 12px;
-    border-radius: 16px;
+    padding: 6px 12px;
+    border-radius: 20px;
     font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.15);
+    transition: all 0.3s ease;
+}
+
+.post-labels .label:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.25);
 }
 
 /* Chat Modal Styles */
@@ -2101,5 +1931,239 @@ body {
     
     .ai-title h2 {
         font-size: 1.5rem;
+    }
+}
+
+/* Post header styling to accommodate actions */
+.post-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    gap: 1rem;
+}
+
+.post-header h3 {
+    margin: 0;
+    flex: 1;
+}
+
+/* Post actions styling for edit and delete buttons - refined to match page aesthetics */
+.post-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+}
+
+.post:hover .post-actions {
+    opacity: 1;
+}
+
+.edit-btn, .delete-btn {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    white-space: nowrap;
+}
+
+/* Shimmer effect matching the main aesthetic */
+.edit-btn::before, .delete-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.edit-btn:hover::before, .delete-btn:hover::before {
+    left: 100%;
+}
+
+/* Edit button - using warm orange tones that complement the blue primary color */
+.edit-btn {
+    background: linear-gradient(145deg, rgba(243, 156, 18, 0.9) 0%, rgba(230, 126, 34, 0.9) 100%);
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.edit-btn:hover {
+    background: linear-gradient(145deg, #f39c12 0%, #e67e22 100%);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 25px rgba(243, 156, 18, 0.4), 0 4px 12px rgba(243, 156, 18, 0.2);
+}
+
+/* Delete button - using the same red gradient as notifications */
+.delete-btn {
+    background: linear-gradient(145deg, rgba(231, 76, 60, 0.9) 0%, rgba(192, 57, 43, 0.9) 100%);
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.delete-btn:hover {
+    background: linear-gradient(145deg, #e74c3c 0%, #c0392b 100%);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4), 0 4px 12px rgba(231, 76, 60, 0.2);
+}
+
+.edit-btn i, .delete-btn i {
+    font-size: 0.85rem;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+}
+
+/* Owner badge styling to match the aesthetic */
+.owner-badge {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.owner-badge i {
+    font-size: 0.7rem;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .post-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    
+    .post-actions {
+        align-self: flex-end;
+        opacity: 1;
+    }
+    
+    .edit-btn, .delete-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.75rem;
+    }
+}
+
+/* Enhanced hover state for the entire post when it contains actions */
+.post.own-post:hover {
+    border-color: rgba(52, 152, 219, 0.4);
+    box-shadow: 0 20px 60px rgba(52, 152, 219, 0.2), 0 8px 20px rgba(52, 152, 219, 0.15);
+}
+
+/* Mark as Retrieved/Returned button styling - matching profile page style */
+.mark-returned-btn {
+    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+    color: white;
+    border: none;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 3px 12px rgba(39, 174, 96, 0.25);
+    position: relative;
+    overflow: hidden;
+    margin-top: 0.75rem;
+}
+
+.mark-returned-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transition: all 0.6s ease;
+    transform: translate(-50%, -50%);
+}
+
+.mark-returned-btn:hover::before {
+    width: 200px;
+    height: 200px;
+}
+
+.mark-returned-btn:hover {
+    background: linear-gradient(135deg, #229954 0%, #1e8449 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(39, 174, 96, 0.35);
+}
+
+.mark-returned-btn:disabled {
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 2px 8px rgba(149, 165, 166, 0.2);
+}
+
+.mark-returned-btn:disabled:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(149, 165, 166, 0.2);
+}
+
+.mark-returned-btn:disabled::before {
+    display: none;
+}
+
+.mark-returned-btn i {
+    font-size: 1rem;
+    z-index: 1;
+    position: relative;
+}
+
+/* Loading state for mark as returned button */
+.mark-returned-btn .fa-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Success feedback animation */
+.mark-returned-btn.success {
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    animation: successPulse 0.6s ease-out;
+}
+
+@keyframes successPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* Responsive adjustments for mark as returned button */
+@media (max-width: 768px) {
+    .mark-returned-btn {
+        padding: 0.7rem 1.3rem;
+        font-size: 0.9rem;
     }
 }
