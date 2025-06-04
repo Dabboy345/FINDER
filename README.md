@@ -1,4 +1,4 @@
-# FINDER
+# ![FINDER](./public/FINDER_LOGO.jpeg)
 
 An App aimed at to the university students to help to recuparate their lost items in the university. 
 
